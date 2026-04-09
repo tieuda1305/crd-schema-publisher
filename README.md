@@ -35,12 +35,17 @@ Commands:
 
 ### Run in Kubernetes
 
-The recommended deployment is as a CronJob with in-cluster service account credentials. See the companion [home-ops](https://github.com/sholdee/home-ops) repository under `apps/kubernetes-schemas/` for a complete example with:
+An example manifest is included at [`deploy/cronjob.yaml`](deploy/cronjob.yaml) with everything needed to run as a CronJob:
 
-- RBAC (ClusterRole for CRD read access)
-- ExternalSecret for Cloudflare credentials
+- Namespace, ServiceAccount, RBAC (ClusterRole for CRD read access)
+- Secret placeholder for Cloudflare credentials
 - Hardened security context (nonroot, read-only rootfs, dropped capabilities)
-- Hourly schedule
+- Daily schedule with 30-minute job deadline
+
+```bash
+# Edit the Secret with your Cloudflare credentials, then apply
+kubectl apply -f deploy/cronjob.yaml
+```
 
 ### Run Locally
 
