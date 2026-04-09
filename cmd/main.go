@@ -3,6 +3,10 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/sholdee/crd-schema-publisher/extractor"
+	"github.com/sholdee/crd-schema-publisher/index"
+	"github.com/sholdee/crd-schema-publisher/publisher"
 )
 
 func main() {
@@ -49,13 +53,62 @@ func requireEnv(key string) (string, error) {
 }
 
 func runExtract() error {
-	fmt.Println("extract: not yet implemented")
+	outputDir := getEnv("OUTPUT_DIR", "/output")
+	kubeContext := os.Getenv("KUBECTL_CONTEXT")
+
+	fmt.Println("Building Kubernetes client...")
+	client, err := extractor.BuildClient(kubeContext)
+	if err != nil {
+		return fmt.Errorf("building client: %w", err)
+	}
+
+	fmt.Println("Listing CRDs...")
+	crds, err := extractor.ListCRDs(client)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Found %d CRDs\n", len(crds))
+
+	if len(crds) == 0 {
+		fmt.Println("No CRDs found, nothing to extract")
+		return nil
+	}
+
+	count, err := extractor.WriteSchemas(crds, outputDir)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Wrote %d JSON schemas to %s\n", count, outputDir)
+
+	fmt.Println("Generating index.html...")
+	if err := index.Generate(outputDir); err != nil {
+		return fmt.Errorf("generating index: %w", err)
+	}
+
+	fmt.Println("Extract complete")
 	return nil
 }
 
 func runUpload() error {
-	fmt.Println("upload: not yet implemented")
-	return nil
+	outputDir := getEnv("OUTPUT_DIR", "/output")
+
+	apiToken, err := requireEnv("CLOUDFLARE_API_TOKEN")
+	if err != nil {
+		return err
+	}
+	accountID, err := requireEnv("CLOUDFLARE_ACCOUNT_ID")
+	if err != nil {
+		return err
+	}
+	projectName := getEnv("CF_PAGES_PROJECT", "kubernetes-schemas")
+
+	p := &publisher.Publisher{
+		APIToken:    apiToken,
+		AccountID:   accountID,
+		ProjectName: projectName,
+	}
+
+	return p.Publish(outputDir)
 }
 
 func runAll() error {
