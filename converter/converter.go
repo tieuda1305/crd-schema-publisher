@@ -48,38 +48,47 @@ func ReplaceIntOrString(data interface{}) interface{} {
 
 // AllowNullOptionalFields converts non-required fields with "type": "X" to
 // "type": ["X", "null"]. This makes optional fields nullable in the JSON schema.
-// The requiredParent parameter is the nearest ancestor that may contain a "required" list.
-func AllowNullOptionalFields(data interface{}, parent, requiredParent map[string]interface{}, key string) interface{} {
+// propertyName is the field's key in its parent "properties" map.
+// requiredSet contains the names of required fields from the parent object.
+func AllowNullOptionalFields(data interface{}, propertyName string, requiredSet map[string]bool) interface{} {
 	switch d := data.(type) {
 	case map[string]interface{}:
-		// When this map has "properties", recurse into each property
-		// passing this map as the requiredParent (since "required" is a sibling of "properties").
-		if props, ok := d["properties"].(map[string]interface{}); ok {
-			for pk, pv := range props {
-				props[pk] = AllowNullOptionalFields(pv, props, d, pk)
+		// If this property object has a "type" and is not required, make it nullable.
+		if propertyName != "" && !requiredSet[propertyName] {
+			if t, ok := d["type"].(string); ok && t != "null" {
+				d["type"] = []interface{}{t, "null"}
 			}
 		}
-		// Recurse into all other values (non-properties children)
+
+		// Build the required set for this object's own properties.
+		var childRequired map[string]bool
+		if reqList, ok := d["required"].([]interface{}); ok {
+			childRequired = make(map[string]bool, len(reqList))
+			for _, r := range reqList {
+				if s, ok := r.(string); ok {
+					childRequired[s] = true
+				}
+			}
+		}
+
+		// Recurse into properties with the required set from this object.
+		if props, ok := d["properties"].(map[string]interface{}); ok {
+			for pk, pv := range props {
+				props[pk] = AllowNullOptionalFields(pv, pk, childRequired)
+			}
+		}
+
+		// Recurse into non-property children (e.g., items, additionalProperties schema).
 		for k, v := range d {
 			if k == "properties" {
-				continue // already handled above
+				continue
 			}
-			d[k] = AllowNullOptionalFields(v, d, requiredParent, k)
+			d[k] = AllowNullOptionalFields(v, "", nil)
 		}
 		return d
 	case []interface{}:
 		for i, v := range d {
-			d[i] = AllowNullOptionalFields(v, nil, requiredParent, key)
-		}
-		return d
-	case string:
-		if key == "type" && d != "null" {
-			if requiredParent != nil {
-				if _, hasRequired := requiredParent["required"]; hasRequired {
-					return d
-				}
-			}
-			return []interface{}{d, "null"}
+			d[i] = AllowNullOptionalFields(v, "", nil)
 		}
 		return d
 	default:
@@ -91,7 +100,7 @@ func AllowNullOptionalFields(data interface{}, parent, requiredParent map[string
 func Convert(schema map[string]interface{}) map[string]interface{} {
 	skipRoot := os.Getenv("DENY_ROOT_ADDITIONAL_PROPERTIES") == ""
 	schema = AdditionalProperties(schema, skipRoot)
-	ReplaceIntOrString(schema)
-	AllowNullOptionalFields(schema, nil, nil, "")
+	schema = ReplaceIntOrString(schema).(map[string]interface{})
+	schema = AllowNullOptionalFields(schema, "", nil).(map[string]interface{})
 	return schema
 }

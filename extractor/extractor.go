@@ -18,11 +18,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-type SchemaFile struct {
-	RelPath string
-	AbsPath string
-}
-
 func BuildClient(kubeContext string) (*apiextensionsclient.Clientset, error) {
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
@@ -157,21 +152,3 @@ func WriteSchemas(crds []apiextensionsv1.CustomResourceDefinition, outputDir str
 	return count, firstErr
 }
 
-func CollectSchemaFiles(outputDir string) ([]SchemaFile, error) {
-	var files []SchemaFile
-	err := filepath.Walk(outputDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() || filepath.Ext(path) != ".json" {
-			return nil
-		}
-		rel, err := filepath.Rel(outputDir, path)
-		if err != nil {
-			return err
-		}
-		files = append(files, SchemaFile{RelPath: rel, AbsPath: path})
-		return nil
-	})
-	return files, err
-}

@@ -141,7 +141,7 @@ func TestAllowNullOptionalFields_ConvertsNonRequiredType(t *testing.T) {
 			},
 		},
 	}
-	result := AllowNullOptionalFields(schema, nil, nil, "")
+	result := AllowNullOptionalFields(schema, "", nil)
 	name := result.(map[string]interface{})["properties"].(map[string]interface{})["name"].(map[string]interface{})
 	typeVal := name["type"]
 	arr, ok := typeVal.([]interface{})
@@ -163,10 +163,42 @@ func TestAllowNullOptionalFields_SkipsRequiredFields(t *testing.T) {
 			},
 		},
 	}
-	result := AllowNullOptionalFields(schema, nil, nil, "")
+	result := AllowNullOptionalFields(schema, "", nil)
 	name := result.(map[string]interface{})["properties"].(map[string]interface{})["name"].(map[string]interface{})
 	if name["type"] != "string" {
 		t.Fatal("required field type should remain a string, not array")
+	}
+}
+
+func TestAllowNullOptionalFields_MixedRequiredAndOptional(t *testing.T) {
+	schema := map[string]interface{}{
+		"type":     "object",
+		"required": []interface{}{"name"},
+		"properties": map[string]interface{}{
+			"name": map[string]interface{}{
+				"type": "string",
+			},
+			"description": map[string]interface{}{
+				"type": "string",
+			},
+		},
+	}
+	result := AllowNullOptionalFields(schema, "", nil)
+	props := result.(map[string]interface{})["properties"].(map[string]interface{})
+
+	// "name" is required — should stay as plain string
+	if props["name"].(map[string]interface{})["type"] != "string" {
+		t.Fatal("required field 'name' should remain type string")
+	}
+
+	// "description" is NOT required — should become ["string", "null"]
+	descType := props["description"].(map[string]interface{})["type"]
+	arr, ok := descType.([]interface{})
+	if !ok {
+		t.Fatalf("optional field 'description' should have array type, got %T: %v", descType, descType)
+	}
+	if len(arr) != 2 || arr[0] != "string" || arr[1] != "null" {
+		t.Fatalf("expected [string, null], got %v", arr)
 	}
 }
 
@@ -179,7 +211,7 @@ func TestAllowNullOptionalFields_SkipsNullType(t *testing.T) {
 			},
 		},
 	}
-	result := AllowNullOptionalFields(schema, nil, nil, "")
+	result := AllowNullOptionalFields(schema, "", nil)
 	nothing := result.(map[string]interface{})["properties"].(map[string]interface{})["nothing"].(map[string]interface{})
 	if nothing["type"] != "null" {
 		t.Fatal("null type should not be modified")

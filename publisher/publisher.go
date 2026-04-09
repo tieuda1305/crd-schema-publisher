@@ -22,6 +22,7 @@ const (
 	uploadConcurrency = 3
 	maxUploadRetries  = 5
 	maxDeployRetries  = 3
+	httpTimeout       = 120 * time.Second
 	cfBaseURL         = "https://api.cloudflare.com/client/v4"
 )
 
@@ -31,6 +32,7 @@ type Publisher struct {
 	ProjectName string
 	BaseURL     string
 	AssetsURL   string
+	HTTPClient  *http.Client
 }
 
 type fileEntry struct {
@@ -61,6 +63,13 @@ func (p *Publisher) assetsURL() string {
 	return cfBaseURL
 }
 
+func (p *Publisher) httpClient() *http.Client {
+	if p.HTTPClient != nil {
+		return p.HTTPClient
+	}
+	return &http.Client{Timeout: httpTimeout}
+}
+
 func (p *Publisher) Publish(dir string) error {
 	if err := p.ensureProject(); err != nil {
 		return fmt.Errorf("ensuring project: %w", err)
@@ -79,18 +88,21 @@ func (p *Publisher) Publish(dir string) error {
 		return fmt.Errorf("getting upload token: %w", err)
 	}
 
-	allHashes := make([]string, len(files))
+	// Deduplicate hashes (identical content across output formats maps to same hash).
 	hashToFile := map[string]*fileEntry{}
-	for i, f := range files {
-		allHashes[i] = f.hash
-		hashToFile[f.hash] = files[i]
+	for _, f := range files {
+		hashToFile[f.hash] = f
+	}
+	uniqueHashes := make([]string, 0, len(hashToFile))
+	for h := range hashToFile {
+		uniqueHashes = append(uniqueHashes, h)
 	}
 
-	missing, err := p.checkMissing(jwt, allHashes)
+	missing, err := p.checkMissing(jwt, uniqueHashes)
 	if err != nil {
 		return fmt.Errorf("checking missing: %w", err)
 	}
-	fmt.Printf("Uploading %d new files (%d already cached)\n", len(missing), len(files)-len(missing))
+	fmt.Printf("Uploading %d new files (%d already cached)\n", len(missing), len(uniqueHashes)-len(missing))
 
 	if len(missing) > 0 {
 		var toUpload []*fileEntry
@@ -104,7 +116,7 @@ func (p *Publisher) Publish(dir string) error {
 		}
 	}
 
-	if err := p.upsertHashes(jwt, allHashes); err != nil {
+	if err := p.upsertHashes(jwt, uniqueHashes); err != nil {
 		return fmt.Errorf("upserting hashes: %w", err)
 	}
 
@@ -122,31 +134,44 @@ func (p *Publisher) Publish(dir string) error {
 
 func (p *Publisher) ensureProject() error {
 	url := fmt.Sprintf("%s/accounts/%s/pages/projects/%s", p.baseURL(), p.AccountID, p.ProjectName)
-	req, _ := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("building request: %w", err)
+	}
 	req.Header.Set("Authorization", "Bearer "+p.APIToken)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.httpClient().Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 	var cr cfResponse
-	json.NewDecoder(resp.Body).Decode(&cr)
+	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
+		return fmt.Errorf("decoding response: %w", err)
+	}
 	if cr.Success {
 		return nil
 	}
 
 	fmt.Printf("Creating Cloudflare Pages project: %s\n", p.ProjectName)
-	body, _ := json.Marshal(map[string]string{"name": p.ProjectName, "production_branch": "production"})
+	body, err := json.Marshal(map[string]string{"name": p.ProjectName, "production_branch": "production"})
+	if err != nil {
+		return fmt.Errorf("marshaling request: %w", err)
+	}
 	createURL := fmt.Sprintf("%s/accounts/%s/pages/projects", p.baseURL(), p.AccountID)
-	req, _ = http.NewRequest("POST", createURL, bytes.NewReader(body))
+	req, err = http.NewRequest("POST", createURL, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("building request: %w", err)
+	}
 	req.Header.Set("Authorization", "Bearer "+p.APIToken)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err = http.DefaultClient.Do(req)
+	resp, err = p.httpClient().Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	json.NewDecoder(resp.Body).Decode(&cr)
+	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
+		return fmt.Errorf("decoding response: %w", err)
+	}
 	if !cr.Success {
 		return fmt.Errorf("failed to create project: %s", cr.Errors)
 	}
@@ -179,43 +204,63 @@ func (p *Publisher) collectFiles(dir string) ([]*fileEntry, error) {
 
 func (p *Publisher) getUploadToken() (string, error) {
 	url := fmt.Sprintf("%s/accounts/%s/pages/projects/%s/upload-token", p.baseURL(), p.AccountID, p.ProjectName)
-	req, _ := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", fmt.Errorf("building request: %w", err)
+	}
 	req.Header.Set("Authorization", "Bearer "+p.APIToken)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.httpClient().Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 	var cr cfResponse
-	json.NewDecoder(resp.Body).Decode(&cr)
+	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
+		return "", fmt.Errorf("decoding response: %w", err)
+	}
 	if !cr.Success {
 		return "", fmt.Errorf("failed to get upload token: %s", cr.Errors)
 	}
 	var result struct {
 		JWT string `json:"jwt"`
 	}
-	json.Unmarshal(cr.Result, &result)
+	if err := json.Unmarshal(cr.Result, &result); err != nil {
+		return "", fmt.Errorf("parsing upload token: %w", err)
+	}
+	if result.JWT == "" {
+		return "", fmt.Errorf("upload token response contained empty JWT")
+	}
 	return result.JWT, nil
 }
 
 func (p *Publisher) checkMissing(jwt string, hashes []string) ([]string, error) {
-	body, _ := json.Marshal(map[string][]string{"hashes": hashes})
+	body, err := json.Marshal(map[string][]string{"hashes": hashes})
+	if err != nil {
+		return nil, fmt.Errorf("marshaling request: %w", err)
+	}
 	url := fmt.Sprintf("%s/pages/assets/check-missing", p.assetsURL())
-	req, _ := http.NewRequest("POST", url, bytes.NewReader(body))
+	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("building request: %w", err)
+	}
 	req.Header.Set("Authorization", "Bearer "+jwt)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.httpClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 	var cr cfResponse
-	json.NewDecoder(resp.Body).Decode(&cr)
+	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
 	if !cr.Success {
 		return nil, fmt.Errorf("check-missing failed: %s", cr.Errors)
 	}
 	var missing []string
-	json.Unmarshal(cr.Result, &missing)
+	if err := json.Unmarshal(cr.Result, &missing); err != nil {
+		return nil, fmt.Errorf("parsing missing hashes: %w", err)
+	}
 	return missing, nil
 }
 
@@ -283,21 +328,32 @@ func (p *Publisher) uploadBucket(jwt string, files []*fileEntry) error {
 			Base64:   true,
 		})
 	}
-	body, _ := json.Marshal(payload)
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshaling upload payload: %w", err)
+	}
 	url := fmt.Sprintf("%s/pages/assets/upload", p.assetsURL())
 	var lastErr error
 	for attempt := 0; attempt < maxUploadRetries; attempt++ {
-		req, _ := http.NewRequest("POST", url, bytes.NewReader(body))
+		req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+		if err != nil {
+			return fmt.Errorf("building request: %w", err)
+		}
 		req.Header.Set("Authorization", "Bearer "+jwt)
 		req.Header.Set("Content-Type", "application/json")
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := p.httpClient().Do(req)
 		if err != nil {
 			lastErr = err
 			time.Sleep(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
 			continue
 		}
 		var cr cfResponse
-		json.NewDecoder(resp.Body).Decode(&cr)
+		if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("decoding response: %w", err)
+			time.Sleep(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
+			continue
+		}
 		resp.Body.Close()
 		if cr.Success {
 			return nil
@@ -313,18 +369,26 @@ func (p *Publisher) uploadBucket(jwt string, files []*fileEntry) error {
 }
 
 func (p *Publisher) upsertHashes(jwt string, hashes []string) error {
-	body, _ := json.Marshal(map[string][]string{"hashes": hashes})
+	body, err := json.Marshal(map[string][]string{"hashes": hashes})
+	if err != nil {
+		return fmt.Errorf("marshaling request: %w", err)
+	}
 	url := fmt.Sprintf("%s/pages/assets/upsert-hashes", p.assetsURL())
-	req, _ := http.NewRequest("POST", url, bytes.NewReader(body))
+	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("building request: %w", err)
+	}
 	req.Header.Set("Authorization", "Bearer "+jwt)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.httpClient().Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 	var cr cfResponse
-	json.NewDecoder(resp.Body).Decode(&cr)
+	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
+		return fmt.Errorf("decoding response: %w", err)
+	}
 	if !cr.Success {
 		return fmt.Errorf("upsert-hashes failed: %s", cr.Errors)
 	}
@@ -332,7 +396,10 @@ func (p *Publisher) upsertHashes(jwt string, hashes []string) error {
 }
 
 func (p *Publisher) createDeployment(manifest map[string]string) (string, error) {
-	manifestJSON, _ := json.Marshal(manifest)
+	manifestJSON, err := json.Marshal(manifest)
+	if err != nil {
+		return "", fmt.Errorf("marshaling manifest: %w", err)
+	}
 	var lastErr error
 	for attempt := 0; attempt < maxDeployRetries; attempt++ {
 		var body bytes.Buffer
@@ -344,10 +411,13 @@ func (p *Publisher) createDeployment(manifest map[string]string) (string, error)
 		part.Write(manifestJSON)
 		writer.Close()
 		url := fmt.Sprintf("%s/accounts/%s/pages/projects/%s/deployments", p.baseURL(), p.AccountID, p.ProjectName)
-		req, _ := http.NewRequest("POST", url, &body)
+		req, err := http.NewRequest("POST", url, &body)
+		if err != nil {
+			return "", fmt.Errorf("building request: %w", err)
+		}
 		req.Header.Set("Authorization", "Bearer "+p.APIToken)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := p.httpClient().Do(req)
 		if err != nil {
 			lastErr = err
 			time.Sleep(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
@@ -356,12 +426,18 @@ func (p *Publisher) createDeployment(manifest map[string]string) (string, error)
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		var cr cfResponse
-		json.Unmarshal(respBody, &cr)
+		if err := json.Unmarshal(respBody, &cr); err != nil {
+			lastErr = fmt.Errorf("decoding response: %w", err)
+			time.Sleep(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
+			continue
+		}
 		if cr.Success {
 			var result struct {
 				URL string `json:"url"`
 			}
-			json.Unmarshal(cr.Result, &result)
+			if err := json.Unmarshal(cr.Result, &result); err != nil {
+				return "", fmt.Errorf("parsing deployment URL: %w", err)
+			}
 			return result.URL, nil
 		}
 		lastErr = fmt.Errorf("deployment failed: %s", string(respBody))
