@@ -131,3 +131,81 @@ func TestReplaceIntOrString_RecursesIntoArrayItems(t *testing.T) {
 		t.Fatal("should recurse into nested objects")
 	}
 }
+
+func TestAllowNullOptionalFields_ConvertsNonRequiredType(t *testing.T) {
+	schema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"name": map[string]interface{}{
+				"type": "string",
+			},
+		},
+	}
+	result := AllowNullOptionalFields(schema, nil, nil, "")
+	name := result.(map[string]interface{})["properties"].(map[string]interface{})["name"].(map[string]interface{})
+	typeVal := name["type"]
+	arr, ok := typeVal.([]interface{})
+	if !ok {
+		t.Fatalf("expected type to be array, got %T", typeVal)
+	}
+	if len(arr) != 2 || arr[0] != "string" || arr[1] != "null" {
+		t.Fatalf("expected [string, null], got %v", arr)
+	}
+}
+
+func TestAllowNullOptionalFields_SkipsRequiredFields(t *testing.T) {
+	schema := map[string]interface{}{
+		"type":     "object",
+		"required": []interface{}{"name"},
+		"properties": map[string]interface{}{
+			"name": map[string]interface{}{
+				"type": "string",
+			},
+		},
+	}
+	result := AllowNullOptionalFields(schema, nil, nil, "")
+	name := result.(map[string]interface{})["properties"].(map[string]interface{})["name"].(map[string]interface{})
+	if name["type"] != "string" {
+		t.Fatal("required field type should remain a string, not array")
+	}
+}
+
+func TestAllowNullOptionalFields_SkipsNullType(t *testing.T) {
+	schema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"nothing": map[string]interface{}{
+				"type": "null",
+			},
+		},
+	}
+	result := AllowNullOptionalFields(schema, nil, nil, "")
+	nothing := result.(map[string]interface{})["properties"].(map[string]interface{})["nothing"].(map[string]interface{})
+	if nothing["type"] != "null" {
+		t.Fatal("null type should not be modified")
+	}
+}
+
+func TestConvert_AppliesAllTransforms(t *testing.T) {
+	schema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"port": map[string]interface{}{
+				"format": "int-or-string",
+			},
+			"name": map[string]interface{}{
+				"type": "string",
+			},
+		},
+	}
+	result := Convert(schema)
+	port := result["properties"].(map[string]interface{})["port"].(map[string]interface{})
+	if _, ok := port["oneOf"]; !ok {
+		t.Fatal("intOrString not applied")
+	}
+	name := result["properties"].(map[string]interface{})["name"].(map[string]interface{})
+	typeVal := name["type"]
+	if _, ok := typeVal.([]interface{}); !ok {
+		t.Fatal("nullOptional not applied")
+	}
+}
