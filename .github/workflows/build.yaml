@@ -33,7 +33,7 @@ jobs:
 
       - name: Generate date tag
         id: tag
-        run: echo "date=$(date -u +'%Y-%m-%d-%H%M%S')" >> "$GITHUB_OUTPUT"
+        run: echo "date=v$(date -u +'%Y.%m%d.%H%M%S')" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         uses: docker/build-push-action@v6
