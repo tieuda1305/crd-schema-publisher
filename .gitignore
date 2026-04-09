@@ -1,0 +1,19 @@
+# Binaries
+crd-schema-publisher
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test
+*.test
+*.out
+coverage.txt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Output
+/output/
