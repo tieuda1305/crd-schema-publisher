@@ -77,3 +77,57 @@ func TestAdditionalProperties_SkipsRootWhenFlagged(t *testing.T) {
 		t.Fatal("should skip root when skip=true")
 	}
 }
+
+func TestReplaceIntOrString_ReplacesFormat(t *testing.T) {
+	schema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"port": map[string]interface{}{
+				"format": "int-or-string",
+			},
+		},
+	}
+	result := ReplaceIntOrString(schema)
+	port := result.(map[string]interface{})["properties"].(map[string]interface{})["port"].(map[string]interface{})
+	oneOf, ok := port["oneOf"]
+	if !ok {
+		t.Fatal("expected oneOf to replace int-or-string format")
+	}
+	items := oneOf.([]interface{})
+	if len(items) != 2 {
+		t.Fatalf("expected 2 oneOf items, got %d", len(items))
+	}
+	if _, hasFormat := port["format"]; hasFormat {
+		t.Fatal("format field should be removed")
+	}
+}
+
+func TestReplaceIntOrString_LeavesOtherFormats(t *testing.T) {
+	schema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"name": map[string]interface{}{
+				"type":   "string",
+				"format": "date-time",
+			},
+		},
+	}
+	result := ReplaceIntOrString(schema)
+	name := result.(map[string]interface{})["properties"].(map[string]interface{})["name"].(map[string]interface{})
+	if name["format"] != "date-time" {
+		t.Fatal("should preserve non-int-or-string format")
+	}
+}
+
+func TestReplaceIntOrString_RecursesIntoArrayItems(t *testing.T) {
+	schema := map[string]interface{}{
+		"items": map[string]interface{}{
+			"format": "int-or-string",
+		},
+	}
+	result := ReplaceIntOrString(schema)
+	items := result.(map[string]interface{})["items"].(map[string]interface{})
+	if _, ok := items["oneOf"]; !ok {
+		t.Fatal("should recurse into nested objects")
+	}
+}
