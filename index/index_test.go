@@ -129,6 +129,40 @@ func TestGenerate_EmptyOutputDir(t *testing.T) {
 	}
 }
 
+func TestGenerate_CreatesFavicon(t *testing.T) {
+	tmpDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
+	os.WriteFile(filepath.Join(tmpDir, "example.io", "test_v1.json"), []byte(`{}`), 0o644)
+
+	err := Generate(tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(tmpDir, "favicon.svg"))
+	if err != nil {
+		t.Fatalf("favicon.svg not created: %v", err)
+	}
+
+	svg := string(data)
+	checks := []struct {
+		substr string
+		desc   string
+	}{
+		{"<svg", "SVG root element"},
+		{"viewBox", "viewBox attribute"},
+		{"<circle", "vertex circles"},
+		{"<line", "edge lines"},
+		{"#6bc1fe", "accent blue color"},
+		{"#fff", "white vertex fill"},
+	}
+	for _, c := range checks {
+		if !strings.Contains(svg, c.substr) {
+			t.Errorf("favicon should contain %s (looked for %q)", c.desc, c.substr)
+		}
+	}
+}
+
 func TestGenerate_SkipsNonJsonFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 	os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
