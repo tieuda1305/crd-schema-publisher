@@ -74,7 +74,7 @@ spec:
             - name: OUTPUT_DIR
               value: /output
             - name: DEBOUNCE_SECONDS
-              value: "30"
+              value: "15"
             - name: POD_NAME
               valueFrom:
                 fieldRef:

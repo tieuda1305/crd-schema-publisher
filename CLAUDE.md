@@ -50,7 +50,7 @@ KUBECTL_CONTEXT=my-context OUTPUT_DIR=./output go run ./cmd/ extract
 | `CF_PAGES_PROJECT` | No | `kubernetes-schemas` | CF Pages project name |
 | `OUTPUT_DIR` | No | `/output` | Schema output directory |
 | `KUBECTL_CONTEXT` | No | — | K8s context (local dev only) |
-| `DEBOUNCE_SECONDS` | No | `30` | Seconds to wait after last CRD event before publishing (watch mode) |
+| `DEBOUNCE_SECONDS` | No | `15` | Seconds to wait after last CRD event before publishing (watch mode) |
 | `POD_NAME` | Yes (watch) | — | Pod identity for leader election (set via downward API) |
 | `POD_NAMESPACE` | Yes (watch) | — | Namespace for leader lease (set via downward API) |
 | `LEASE_NAME` | No | `crd-schema-publisher` | Name of the Lease resource (watch mode) |

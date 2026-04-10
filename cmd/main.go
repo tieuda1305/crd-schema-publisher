@@ -136,7 +136,7 @@ func runWatch() error {
 		return err
 	}
 
-	debounceSeconds := 30
+	debounceSeconds := 15
 	if v := os.Getenv("DEBOUNCE_SECONDS"); v != "" {
 		parsed, err := strconv.Atoi(v)
 		if err != nil {

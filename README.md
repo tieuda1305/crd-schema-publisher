@@ -33,7 +33,7 @@ Commands:
 | `CF_PAGES_PROJECT` | No | `kubernetes-schemas` | Cloudflare Pages project name |
 | `OUTPUT_DIR` | No | `/output` | Directory for schema output |
 | `KUBECTL_CONTEXT` | No | — | Kubernetes context name (local development only) |
-| `DEBOUNCE_SECONDS` | No | `30` | Seconds to wait after last CRD event before publishing (watch mode) |
+| `DEBOUNCE_SECONDS` | No | `15` | Seconds to wait after last CRD event before publishing (watch mode) |
 | `POD_NAME` | Yes (watch) | — | Pod identity for leader election (set via downward API) |
 | `POD_NAMESPACE` | Yes (watch) | — | Namespace for leader lease (set via downward API) |
 | `LEASE_NAME` | No | `crd-schema-publisher` | Name of the Lease resource (watch mode) |
