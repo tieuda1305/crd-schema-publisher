@@ -18,7 +18,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-func BuildClient(kubeContext string) (*apiextensionsclient.Clientset, error) {
+func BuildConfig(kubeContext string) (*rest.Config, error) {
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
 		loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
@@ -30,6 +30,14 @@ func BuildClient(kubeContext string) (*apiextensionsclient.Clientset, error) {
 		if err != nil {
 			return nil, fmt.Errorf("building kubeconfig: %w", err)
 		}
+	}
+	return cfg, nil
+}
+
+func BuildClient(kubeContext string) (*apiextensionsclient.Clientset, error) {
+	cfg, err := BuildConfig(kubeContext)
+	if err != nil {
+		return nil, err
 	}
 	return apiextensionsclient.NewForConfig(cfg)
 }
