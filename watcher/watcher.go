@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -43,7 +44,7 @@ type Config struct {
 func Run(ctx context.Context, cfg Config) error {
 	// Start health server before leader election
 	healthReady := &atomic.Bool{}
-	startHealthServer(cfg.HealthPort, healthReady)
+	healthServer := startHealthServer(cfg.HealthPort, healthReady)
 
 	kubeClient, err := kubernetes.NewForConfig(cfg.KubeConfig)
 	if err != nil {
@@ -69,6 +70,10 @@ func Run(ctx context.Context, cfg Config) error {
 		LeaseDuration:   15 * time.Second,
 		RenewDeadline:   10 * time.Second,
 		RetryPeriod:     2 * time.Second,
+		// ReleaseOnCancel releases the lease on context cancellation so another
+		// replica can acquire leadership quickly. This means the lease is released
+		// while an in-flight publish may still be running. This is safe because
+		// publish cycles are idempotent and the new leader does a full re-publish.
 		ReleaseOnCancel: true,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
@@ -76,8 +81,15 @@ func Run(ctx context.Context, cfg Config) error {
 				runLeader(ctx, cfg)
 			},
 			OnStoppedLeading: func() {
-				log.Println("Lost leadership, exiting")
-				os.Exit(1)
+				// Distinguish graceful shutdown (context cancelled) from unexpected lease loss.
+				// On unexpected loss, exit immediately — standard controller pattern.
+				// On graceful shutdown, return normally so Run() can drain.
+				if ctx.Err() != nil {
+					log.Println("Leadership released during shutdown")
+				} else {
+					log.Println("Lost leadership unexpectedly, exiting")
+					os.Exit(1)
+				}
 			},
 			OnNewLeader: func(identity string) {
 				if identity != cfg.PodName {
@@ -87,6 +99,14 @@ func Run(ctx context.Context, cfg Config) error {
 		},
 	})
 
+	// Graceful shutdown: stop health server
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	if err := healthServer.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Health server shutdown error: %v", err)
+	}
+
+	log.Println("Shutdown complete")
 	return nil
 }
 
@@ -136,16 +156,33 @@ func signalTrigger(ch chan struct{}) {
 	}
 }
 
+// drainTimeout bounds how long we wait for an in-flight publish to finish
+// during shutdown. Must be less than terminationGracePeriodSeconds (default 30s)
+// to leave time for health server shutdown and process cleanup.
+const drainTimeout = 25 * time.Second
+
 func debounceLoop(trigger <-chan struct{}, duration time.Duration, publish func() error, done <-chan struct{}) {
 	var timer *time.Timer
 	var timerC <-chan time.Time
 	var publishing atomic.Bool
+	var wg sync.WaitGroup
 
 	for {
 		select {
 		case <-done:
 			if timer != nil {
 				timer.Stop()
+			}
+			// Wait for in-flight publish to complete, bounded by drainTimeout
+			drained := make(chan struct{})
+			go func() {
+				wg.Wait()
+				close(drained)
+			}()
+			select {
+			case <-drained:
+			case <-time.After(drainTimeout):
+				log.Println("Drain timeout exceeded, abandoning in-flight publish")
 			}
 			return
 		case <-trigger:
@@ -168,7 +205,9 @@ func debounceLoop(trigger <-chan struct{}, duration time.Duration, publish func(
 				log.Println("Publish already in progress, skipping")
 				continue
 			}
+			wg.Add(1)
 			go func() {
+				defer wg.Done()
 				defer publishing.Store(false)
 				log.Println("Debounce timer fired, running publish cycle")
 				if err := publish(); err != nil {
@@ -233,7 +272,7 @@ func cleanDir(dir string) error {
 	return nil
 }
 
-func startHealthServer(port string, ready *atomic.Bool) {
+func startHealthServer(port string, ready *atomic.Bool) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -248,10 +287,11 @@ func startHealthServer(port string, ready *atomic.Bool) {
 			w.Write([]byte("not ready"))
 		}
 	})
+	server := &http.Server{Addr: ":" + port, Handler: mux}
 	go func() {
-		server := &http.Server{Addr: ":" + port, Handler: mux}
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("Health server error: %v", err)
 		}
 	}()
+	return server
 }
