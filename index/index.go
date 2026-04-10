@@ -27,12 +27,41 @@ type indexData struct {
 	UpdatedAt  string
 }
 
+const faviconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+<line x1="16" y1="3" x2="28.38" y2="7.96" stroke="#6bc1fe" stroke-width="1.5" stroke-linecap="round"/>
+<line x1="28.38" y1="7.96" x2="27.02" y2="21.53" stroke="#6bc1fe" stroke-width="1.5" stroke-linecap="round"/>
+<line x1="27.02" y1="21.53" x2="19.04" y2="28.51" stroke="#6bc1fe" stroke-width="1.5" stroke-linecap="round"/>
+<line x1="19.04" y1="28.51" x2="12.96" y2="28.51" stroke="#6bc1fe" stroke-width="1.5" stroke-linecap="round"/>
+<line x1="12.96" y1="28.51" x2="4.98" y2="21.53" stroke="#6bc1fe" stroke-width="1.5" stroke-linecap="round"/>
+<line x1="4.98" y1="21.53" x2="3.62" y2="7.96" stroke="#6bc1fe" stroke-width="1.5" stroke-linecap="round"/>
+<line x1="3.62" y1="7.96" x2="16" y2="3" stroke="#6bc1fe" stroke-width="1.5" stroke-linecap="round"/>
+<circle cx="16" cy="3" r="4" fill="#6bc1fe" opacity="0.2"/>
+<circle cx="28.38" cy="7.96" r="4" fill="#6bc1fe" opacity="0.2"/>
+<circle cx="27.02" cy="21.53" r="4" fill="#6bc1fe" opacity="0.2"/>
+<circle cx="19.04" cy="28.51" r="4" fill="#6bc1fe" opacity="0.2"/>
+<circle cx="12.96" cy="28.51" r="4" fill="#6bc1fe" opacity="0.2"/>
+<circle cx="4.98" cy="21.53" r="4" fill="#6bc1fe" opacity="0.2"/>
+<circle cx="3.62" cy="7.96" r="4" fill="#6bc1fe" opacity="0.2"/>
+<circle cx="16" cy="3" r="2.5" fill="#fff"/>
+<circle cx="28.38" cy="7.96" r="2.5" fill="#fff"/>
+<circle cx="27.02" cy="21.53" r="2.5" fill="#fff"/>
+<circle cx="19.04" cy="28.51" r="2.5" fill="#fff"/>
+<circle cx="12.96" cy="28.51" r="2.5" fill="#fff"/>
+<circle cx="4.98" cy="21.53" r="2.5" fill="#fff"/>
+<circle cx="3.62" cy="7.96" r="2.5" fill="#fff"/>
+</svg>`
+
+func writeFavicon(outputDir string) error {
+	return os.WriteFile(filepath.Join(outputDir, "favicon.svg"), []byte(faviconSVG), 0o644)
+}
+
 const indexTemplate = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kubernetes CRD Schemas</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
   :root {
     --bg: #09090b;
@@ -119,6 +148,8 @@ const indexTemplate = `<!DOCTYPE html>
   .light body::before, .light .flare { display: none; }
   header { margin-bottom: 2rem; }
   .title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem; }
+  .title-group { display: flex; align-items: center; gap: 0.6rem; }
+  .title-icon { width: 28px; height: 28px; flex-shrink: 0; }
   h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; }
   .subtitle { color: var(--fg-muted); font-size: 0.85rem; margin-bottom: 1.5rem; }
   .theme-toggle {
@@ -250,7 +281,32 @@ const indexTemplate = `<!DOCTYPE html>
 <div class="flare"></div>
 <header>
   <div class="title-row">
-    <h1>Kubernetes CRD Schemas</h1>
+    <div class="title-group">
+      <svg class="title-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+        <line x1="16" y1="3" x2="28.38" y2="7.96" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="28.38" y1="7.96" x2="27.02" y2="21.53" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="27.02" y1="21.53" x2="19.04" y2="28.51" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="19.04" y1="28.51" x2="12.96" y2="28.51" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="12.96" y1="28.51" x2="4.98" y2="21.53" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="4.98" y1="21.53" x2="3.62" y2="7.96" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="3.62" y1="7.96" x2="16" y2="3" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+        <circle cx="16" cy="3" r="4" fill="var(--accent)" opacity="0.2"/>
+        <circle cx="28.38" cy="7.96" r="4" fill="var(--accent)" opacity="0.2"/>
+        <circle cx="27.02" cy="21.53" r="4" fill="var(--accent)" opacity="0.2"/>
+        <circle cx="19.04" cy="28.51" r="4" fill="var(--accent)" opacity="0.2"/>
+        <circle cx="12.96" cy="28.51" r="4" fill="var(--accent)" opacity="0.2"/>
+        <circle cx="4.98" cy="21.53" r="4" fill="var(--accent)" opacity="0.2"/>
+        <circle cx="3.62" cy="7.96" r="4" fill="var(--accent)" opacity="0.2"/>
+        <circle cx="16" cy="3" r="2.5" fill="var(--fg)"/>
+        <circle cx="28.38" cy="7.96" r="2.5" fill="var(--fg)"/>
+        <circle cx="27.02" cy="21.53" r="2.5" fill="var(--fg)"/>
+        <circle cx="19.04" cy="28.51" r="2.5" fill="var(--fg)"/>
+        <circle cx="12.96" cy="28.51" r="2.5" fill="var(--fg)"/>
+        <circle cx="4.98" cy="21.53" r="2.5" fill="var(--fg)"/>
+        <circle cx="3.62" cy="7.96" r="2.5" fill="var(--fg)"/>
+      </svg>
+      <h1>Kubernetes CRD Schemas</h1>
+    </div>
     <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">☀/☾</button>
   </div>
   <p class="subtitle">JSON schemas extracted from live CRD definitions</p>
@@ -467,6 +523,10 @@ func Generate(outputDir string) error {
 		sortedGroups = append(sortedGroups, groupData{Name: name, Schemas: schemas})
 	}
 	sort.Slice(sortedGroups, func(i, j int) bool { return sortedGroups[i].Name < sortedGroups[j].Name })
+
+	if err := writeFavicon(outputDir); err != nil {
+		return fmt.Errorf("writing favicon: %w", err)
+	}
 
 	tmpl, err := template.New("index").Parse(indexTemplate)
 	if err != nil {
