@@ -53,6 +53,7 @@ func TestGenerate_CreatesIndexHTML(t *testing.T) {
 		{"#q=", "URL hash deep-link support"},
 		{"id=\"back-to-top\"", "back to top button"},
 		{"focus-visible", "keyboard focus outlines"},
+		{"favicon.svg", "favicon link tag"},
 	}
 	for _, c := range checks {
 		if !strings.Contains(html, c.substr) {
