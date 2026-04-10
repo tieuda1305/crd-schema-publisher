@@ -1,12 +1,19 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"strconv"
+	"syscall"
+	"time"
 
 	"github.com/sholdee/crd-schema-publisher/extractor"
 	"github.com/sholdee/crd-schema-publisher/index"
 	"github.com/sholdee/crd-schema-publisher/publisher"
+	"github.com/sholdee/crd-schema-publisher/watcher"
+	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 )
 
 func main() {
@@ -31,8 +38,13 @@ func main() {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
+	case "watch":
+		if err := runWatch(); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command: %s\nusage: crd-schema-publisher [run|extract|upload]\n", cmd)
+		fmt.Fprintf(os.Stderr, "unknown command: %s\nusage: crd-schema-publisher [run|extract|upload|watch]\n", cmd)
 		os.Exit(1)
 	}
 }
@@ -109,6 +121,68 @@ func runUpload() error {
 	}
 
 	return p.Publish(outputDir)
+}
+
+func runWatch() error {
+	outputDir := getEnv("OUTPUT_DIR", "/output")
+	kubeContext := os.Getenv("KUBECTL_CONTEXT")
+
+	podName, err := requireEnv("POD_NAME")
+	if err != nil {
+		return err
+	}
+	podNamespace, err := requireEnv("POD_NAMESPACE")
+	if err != nil {
+		return err
+	}
+
+	debounceSeconds := 30
+	if v := os.Getenv("DEBOUNCE_SECONDS"); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("invalid DEBOUNCE_SECONDS: %w", err)
+		}
+		debounceSeconds = parsed
+	}
+
+	leaseName := getEnv("LEASE_NAME", "crd-schema-publisher")
+	healthPort := getEnv("HEALTH_PORT", "8080")
+
+	cfg, err := extractor.BuildConfig(kubeContext)
+	if err != nil {
+		return fmt.Errorf("building kubeconfig: %w", err)
+	}
+
+	client, err := apiextensionsclient.NewForConfig(cfg)
+	if err != nil {
+		return fmt.Errorf("building apiextensions client: %w", err)
+	}
+
+	var pub *publisher.Publisher
+	apiToken := os.Getenv("CLOUDFLARE_API_TOKEN")
+	accountID := os.Getenv("CLOUDFLARE_ACCOUNT_ID")
+	if apiToken != "" && accountID != "" {
+		pub = &publisher.Publisher{
+			APIToken:    apiToken,
+			AccountID:   accountID,
+			ProjectName: getEnv("CF_PAGES_PROJECT", "kubernetes-schemas"),
+		}
+	}
+
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer cancel()
+
+	return watcher.Run(ctx, watcher.Config{
+		Client:     client,
+		KubeConfig: cfg,
+		OutputDir:  outputDir,
+		Publisher:  pub,
+		Debounce:   time.Duration(debounceSeconds) * time.Second,
+		Namespace:  podNamespace,
+		LeaseName:  leaseName,
+		PodName:    podName,
+		HealthPort: healthPort,
+	})
 }
 
 func runAll() error {
