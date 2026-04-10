@@ -1,6 +1,6 @@
 # crd-schema-publisher
 
-Extracts CRD JSON schemas from a Kubernetes cluster and publishes them to a Cloudflare Pages website. Designed to run as a Kubernetes CronJob in a distroless nonroot container.
+Extracts CRD JSON schemas from a Kubernetes cluster and publishes them to a Cloudflare Pages website. Runs as a Kubernetes Deployment (watch mode) or CronJob in a distroless nonroot container.
 
 ## Features
 
@@ -21,6 +21,7 @@ Commands:
   run       Extract schemas and upload to Cloudflare Pages (default)
   extract   Extract schemas and generate index to OUTPUT_DIR
   upload    Upload OUTPUT_DIR contents to Cloudflare Pages
+  watch     Watch for CRD changes and publish on each change (long-lived)
 ```
 
 ### Environment Variables
@@ -32,20 +33,34 @@ Commands:
 | `CF_PAGES_PROJECT` | No | `kubernetes-schemas` | Cloudflare Pages project name |
 | `OUTPUT_DIR` | No | `/output` | Directory for schema output |
 | `KUBECTL_CONTEXT` | No | — | Kubernetes context name (local development only) |
+| `DEBOUNCE_SECONDS` | No | `30` | Seconds to wait after last CRD event before publishing (watch mode) |
+| `POD_NAME` | Yes (watch) | — | Pod identity for leader election (set via downward API) |
+| `POD_NAMESPACE` | Yes (watch) | — | Namespace for leader lease (set via downward API) |
+| `LEASE_NAME` | No | `crd-schema-publisher` | Name of the Lease resource (watch mode) |
+| `HEALTH_PORT` | No | `8080` | Port for liveness/readiness probes (watch mode) |
 
 ### Run in Kubernetes
 
-An example manifest is included at [`deploy/cronjob.yaml`](deploy/cronjob.yaml) with everything needed to run as a CronJob:
+Two deployment modes are available:
 
+**Watch mode (recommended)** — reacts to CRD changes in real-time with debounced publish cycles. Supports leader election for safe rolling updates.
+
+```bash
+kubectl apply -f deploy/common.yaml -f deploy/deployment.yaml
+```
+
+**CronJob mode** — runs on a daily schedule. Simpler, but schemas are only updated once per day.
+
+```bash
+kubectl apply -f deploy/common.yaml -f deploy/cronjob.yaml
+```
+
+Both modes include:
 - Namespace, ServiceAccount, RBAC (ClusterRole for CRD read access)
 - Secret placeholder for Cloudflare credentials
 - Hardened security context (nonroot, read-only rootfs, dropped capabilities)
-- Daily schedule with 30-minute job deadline
 
-```bash
-# Edit the Secret with your Cloudflare credentials, then apply
-kubectl apply -f deploy/cronjob.yaml
-```
+If Cloudflare credentials are omitted, both modes run extract-only (schemas written to `OUTPUT_DIR` but not uploaded).
 
 ### Run Locally
 

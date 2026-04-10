@@ -2,16 +2,17 @@
 
 ## What This Is
 
-A statically-compiled Go binary that extracts CRD JSON schemas from a Kubernetes cluster and publishes them to a Cloudflare Pages website. Runs as an hourly CronJob in a K3s cluster. Deployed in a nonroot distroless container.
+A statically-compiled Go binary that extracts CRD JSON schemas from a Kubernetes cluster and publishes them to a Cloudflare Pages website. Runs as a long-lived Deployment (watch mode) or CronJob in a K3s cluster. Deployed in a nonroot distroless container.
 
 ## Repository Layout
 
 ```text
-cmd/            Entrypoint and subcommand dispatch (run/extract/upload)
+cmd/            Entrypoint and subcommand dispatch (run/extract/upload/watch)
 converter/      OpenAPI v3 -> JSON Schema transforms (ported from openapi2jsonschema.py)
-extractor/      client-go CRD listing, schema extraction, file writing
+extractor/      client-go CRD listing, schema extraction, file writing, config builder
 index/          Static index.html generation
 publisher/      Cloudflare Pages direct upload API client + BLAKE3 hashing
+watcher/        CRD informer watch loop, debounce, leader election, health server
 ```
 
 ## Build & Test
@@ -38,6 +39,7 @@ KUBECTL_CONTEXT=my-context OUTPUT_DIR=./output go run ./cmd/ extract
 - `run` (default) — extract + upload
 - `extract` — extract CRDs and write JSON schemas + index.html to OUTPUT_DIR
 - `upload` — upload OUTPUT_DIR contents to Cloudflare Pages
+- `watch` — long-lived process: informer watches CRDs, debounces events, runs extract+publish cycles. Leader election for multi-replica safety.
 
 ### Configuration (env vars)
 
@@ -48,6 +50,11 @@ KUBECTL_CONTEXT=my-context OUTPUT_DIR=./output go run ./cmd/ extract
 | `CF_PAGES_PROJECT` | No | `kubernetes-schemas` | CF Pages project name |
 | `OUTPUT_DIR` | No | `/output` | Schema output directory |
 | `KUBECTL_CONTEXT` | No | — | K8s context (local dev only) |
+| `DEBOUNCE_SECONDS` | No | `30` | Seconds to wait after last CRD event before publishing (watch mode) |
+| `POD_NAME` | Yes (watch) | — | Pod identity for leader election (set via downward API) |
+| `POD_NAMESPACE` | Yes (watch) | — | Namespace for leader lease (set via downward API) |
+| `LEASE_NAME` | No | `crd-schema-publisher` | Name of the Lease resource (watch mode) |
+| `HEALTH_PORT` | No | `8080` | Port for liveness/readiness probes (watch mode) |
 
 ### Key Design Decisions
 
@@ -57,6 +64,9 @@ KUBECTL_CONTEXT=my-context OUTPUT_DIR=./output go run ./cmd/ extract
 - **OpenAPI v3 to JSON Schema conversion** is a faithful port of `openapi2jsonschema.py` from datreeio/CRDs-catalog. Three transforms applied in order: additionalProperties, replaceIntOrString, allowNullOptionalFields.
 - **Output format** produces two directory structures: `<group>/<kind>_<version>.json` (primary) and `master-standalone/<group>-<kind>-stable-<version>.json` (kubeval compatibility).
 - **Concurrency**: extractor uses 10 goroutines (buffered channel semaphore), publisher uses 3 concurrent upload workers. These match the original tools' behavior.
+- **Watch mode uses full re-extract.** Simpler than incremental. Upload is already incremental via check-missing. Extraction of <200 CRDs is sub-second.
+- **Leader election uses standard client-go leaderelection.** LeaseLock with 15s/10s/2s timings. Leader exits on lease loss (standard controller pattern).
+- **All replicas report ready.** Readiness is not gated on leadership. Standard controller pattern — leadership is an internal concern.
 
 ### Dependencies (direct only)
 
@@ -71,7 +81,7 @@ No other external dependencies. Standard library for HTTP, JSON, HTML templates,
 ## CI/CD
 
 - **GitHub Actions** (`.github/workflows/build.yaml`): builds multi-arch image (amd64 + arm64) on push to main, pushes to `ghcr.io/sholdee/crd-schema-publisher`
-- **Tags**: date-based (`YYYY-MM-DD-HHMMSS` UTC) + `latest`
+- **Tags**: date-based (`vYYYY.MMDD.HHMMSS` UTC) + `latest`
 - **Container**: `gcr.io/distroless/static:nonroot` runtime base
 
 ## Companion Repo
