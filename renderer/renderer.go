@@ -152,7 +152,7 @@ type schemaPageData struct {
 }
 
 // renderSchemaFile reads a JSON schema file and writes a sibling .html file.
-func renderSchemaFile(jsonPath, group, filename string) error {
+func renderSchemaFile(tmpl *template.Template, jsonPath, group, filename string) error {
 	data, err := os.ReadFile(jsonPath)
 	if err != nil {
 		return fmt.Errorf("reading schema %s: %w", jsonPath, err)
@@ -179,6 +179,19 @@ func renderSchemaFile(jsonPath, group, filename string) error {
 		Schema:   &schema,
 	}
 
+	htmlPath := strings.TrimSuffix(jsonPath, ".json") + ".html"
+	f, err := os.Create(htmlPath)
+	if err != nil {
+		return fmt.Errorf("creating %s: %w", htmlPath, err)
+	}
+	defer f.Close()
+
+	return tmpl.Execute(f, pageData)
+}
+
+// RenderAll walks the output directory and generates an HTML page for each JSON schema.
+// Skips the master-standalone directory and non-JSON files.
+func RenderAll(outputDir string) error {
 	funcMap := template.FuncMap{
 		"childNode": func(n *SchemaNode) *SchemaNode {
 			if len(n.Properties) > 0 {
@@ -199,19 +212,6 @@ func renderSchemaFile(jsonPath, group, filename string) error {
 		return fmt.Errorf("parsing template: %w", err)
 	}
 
-	htmlPath := strings.TrimSuffix(jsonPath, ".json") + ".html"
-	f, err := os.Create(htmlPath)
-	if err != nil {
-		return fmt.Errorf("creating %s: %w", htmlPath, err)
-	}
-	defer f.Close()
-
-	return tmpl.Execute(f, pageData)
-}
-
-// RenderAll walks the output directory and generates an HTML page for each JSON schema.
-// Skips the master-standalone directory and non-JSON files.
-func RenderAll(outputDir string) error {
 	entries, err := os.ReadDir(outputDir)
 	if err != nil {
 		return fmt.Errorf("reading output dir: %w", err)
@@ -232,7 +232,7 @@ func RenderAll(outputDir string) error {
 				continue
 			}
 			jsonPath := filepath.Join(groupDir, f.Name())
-			if err := renderSchemaFile(jsonPath, groupName, f.Name()); err != nil {
+			if err := renderSchemaFile(tmpl, jsonPath, groupName, f.Name()); err != nil {
 				return fmt.Errorf("rendering %s/%s: %w", groupName, f.Name(), err)
 			}
 		}

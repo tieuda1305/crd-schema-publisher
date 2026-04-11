@@ -1,11 +1,35 @@
 package renderer
 
 import (
+	"html/template"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func testTemplate(t *testing.T) *template.Template {
+	t.Helper()
+	funcMap := template.FuncMap{
+		"childNode": func(n *SchemaNode) *SchemaNode {
+			if len(n.Properties) > 0 {
+				return n
+			}
+			if n.Items != nil && len(n.Items.Properties) > 0 {
+				return n.Items
+			}
+			return n
+		},
+		"safeHTML": func(s string) template.HTML {
+			return template.HTML(template.HTMLEscapeString(s))
+		},
+	}
+	tmpl, err := template.New("schema").Funcs(funcMap).Parse(schemaTemplate)
+	if err != nil {
+		t.Fatalf("parsing template: %v", err)
+	}
+	return tmpl
+}
 
 func TestDisplayType_SimpleTypes(t *testing.T) {
 	tests := []struct {
@@ -216,7 +240,7 @@ func TestRenderSchema_BasicOutput(t *testing.T) {
 	os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
 	os.WriteFile(filepath.Join(tmpDir, "example.io", "myresource_v1.json"), []byte(schema), 0o644)
 
-	err := renderSchemaFile(filepath.Join(tmpDir, "example.io", "myresource_v1.json"), "example.io", "myresource_v1.json")
+	err := renderSchemaFile(testTemplate(t), filepath.Join(tmpDir, "example.io", "myresource_v1.json"), "example.io", "myresource_v1.json")
 	if err != nil {
 		t.Fatalf("renderSchemaFile error: %v", err)
 	}
@@ -284,7 +308,7 @@ func TestRenderSchema_LeafVsExpandable(t *testing.T) {
 	os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
 	os.WriteFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), []byte(schema), 0o644)
 
-	err := renderSchemaFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), "test.io", "thing_v1.json")
+	err := renderSchemaFile(testTemplate(t), filepath.Join(tmpDir, "test.io", "thing_v1.json"), "test.io", "thing_v1.json")
 	if err != nil {
 		t.Fatalf("renderSchemaFile error: %v", err)
 	}
@@ -325,7 +349,7 @@ func TestRenderSchema_ArrayTypes(t *testing.T) {
 	os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
 	os.WriteFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), []byte(schema), 0o644)
 
-	err := renderSchemaFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), "test.io", "thing_v1.json")
+	err := renderSchemaFile(testTemplate(t), filepath.Join(tmpDir, "test.io", "thing_v1.json"), "test.io", "thing_v1.json")
 	if err != nil {
 		t.Fatalf("renderSchemaFile error: %v", err)
 	}
@@ -356,7 +380,7 @@ func TestRenderSchema_IntOrString(t *testing.T) {
 	os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
 	os.WriteFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), []byte(schema), 0o644)
 
-	err := renderSchemaFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), "test.io", "thing_v1.json")
+	err := renderSchemaFile(testTemplate(t), filepath.Join(tmpDir, "test.io", "thing_v1.json"), "test.io", "thing_v1.json")
 	if err != nil {
 		t.Fatalf("renderSchemaFile error: %v", err)
 	}
@@ -385,7 +409,7 @@ func TestRenderSchema_EnumValues(t *testing.T) {
 	os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
 	os.WriteFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), []byte(schema), 0o644)
 
-	err := renderSchemaFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), "test.io", "thing_v1.json")
+	err := renderSchemaFile(testTemplate(t), filepath.Join(tmpDir, "test.io", "thing_v1.json"), "test.io", "thing_v1.json")
 	if err != nil {
 		t.Fatalf("renderSchemaFile error: %v", err)
 	}
@@ -408,7 +432,7 @@ func TestRenderSchema_MinimalSchema(t *testing.T) {
 	os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
 	os.WriteFile(filepath.Join(tmpDir, "test.io", "empty_v1.json"), []byte(schema), 0o644)
 
-	err := renderSchemaFile(filepath.Join(tmpDir, "test.io", "empty_v1.json"), "test.io", "empty_v1.json")
+	err := renderSchemaFile(testTemplate(t), filepath.Join(tmpDir, "test.io", "empty_v1.json"), "test.io", "empty_v1.json")
 	if err != nil {
 		t.Fatalf("renderSchemaFile error: %v", err)
 	}
@@ -517,7 +541,7 @@ func TestRenderSchema_DeepNesting(t *testing.T) {
 	os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
 	os.WriteFile(filepath.Join(tmpDir, "test.io", "deep_v1.json"), []byte(schema), 0o644)
 
-	err := renderSchemaFile(filepath.Join(tmpDir, "test.io", "deep_v1.json"), "test.io", "deep_v1.json")
+	err := renderSchemaFile(testTemplate(t), filepath.Join(tmpDir, "test.io", "deep_v1.json"), "test.io", "deep_v1.json")
 	if err != nil {
 		t.Fatalf("renderSchemaFile error: %v", err)
 	}

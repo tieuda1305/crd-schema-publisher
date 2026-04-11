@@ -13,7 +13,7 @@ import (
 type schemaEntry struct {
 	Name     string
 	Path     string
-	HtmlPath string
+	HTMLPath string
 }
 
 type groupData struct {
@@ -346,7 +346,7 @@ metadata:
 <details class="group" data-group="{{.Name}}">
 <summary><span class="group-name">{{.Name}}</span> <span class="badge">{{len .Schemas}}</span></summary>
 <div class="schemas">
-{{range .Schemas}}<a href="/{{.HtmlPath}}" data-schema="{{.Name}}" data-url="/{{.Path}}">{{.Name}}<span class="copy-hint">copy URL</span></a>
+{{range .Schemas}}<a href="/{{.HTMLPath}}" data-schema="{{.Name}}" data-url="/{{.Path}}">{{.Name}}<span class="copy-hint">copy URL</span></a>
 {{end}}</div>
 </details>
 {{end}}
@@ -519,7 +519,7 @@ func Generate(outputDir string) error {
 			groups[groupName] = append(groups[groupName], schemaEntry{
 				Name:     f.Name(),
 				Path:     jsonPath,
-				HtmlPath: htmlPath,
+				HTMLPath: htmlPath,
 			})
 			totalCount++
 		}
