@@ -21,28 +21,30 @@ func AdditionalProperties(data map[string]interface{}, skip bool) map[string]int
 
 // ReplaceIntOrString finds {"format": "int-or-string"} and replaces with
 // {"oneOf": [{"type": "string"}, {"type": "integer"}]}.
-func ReplaceIntOrString(data interface{}) interface{} {
-	switch d := data.(type) {
-	case map[string]interface{}:
-		if fmt, ok := d["format"]; ok && fmt == "int-or-string" {
-			delete(d, "format")
-			d["oneOf"] = []interface{}{
-				map[string]interface{}{"type": "string"},
-				map[string]interface{}{"type": "integer"},
-			}
-			return d
+func ReplaceIntOrString(data map[string]interface{}) map[string]interface{} {
+	if fmt, ok := data["format"]; ok && fmt == "int-or-string" {
+		delete(data, "format")
+		data["oneOf"] = []interface{}{
+			map[string]interface{}{"type": "string"},
+			map[string]interface{}{"type": "integer"},
 		}
-		for k, v := range d {
-			d[k] = ReplaceIntOrString(v)
-		}
-		return d
-	case []interface{}:
-		for i, v := range d {
-			d[i] = ReplaceIntOrString(v)
-		}
-		return d
-	default:
 		return data
+	}
+	for k, v := range data {
+		if nested, ok := v.(map[string]interface{}); ok {
+			data[k] = ReplaceIntOrString(nested)
+		} else if arr, ok := v.([]interface{}); ok {
+			replaceIntOrStringSlice(arr)
+		}
+	}
+	return data
+}
+
+func replaceIntOrStringSlice(arr []interface{}) {
+	for i, v := range arr {
+		if nested, ok := v.(map[string]interface{}); ok {
+			arr[i] = ReplaceIntOrString(nested)
+		}
 	}
 }
 
@@ -50,49 +52,53 @@ func ReplaceIntOrString(data interface{}) interface{} {
 // "type": ["X", "null"]. This makes optional fields nullable in the JSON schema.
 // propertyName is the field's key in its parent "properties" map.
 // requiredSet contains the names of required fields from the parent object.
-func AllowNullOptionalFields(data interface{}, propertyName string, requiredSet map[string]bool) interface{} {
-	switch d := data.(type) {
-	case map[string]interface{}:
-		// If this property object has a "type" and is not required, make it nullable.
-		if propertyName != "" && !requiredSet[propertyName] {
-			if t, ok := d["type"].(string); ok && t != "null" {
-				d["type"] = []interface{}{t, "null"}
-			}
+func AllowNullOptionalFields(data map[string]interface{}, propertyName string, requiredSet map[string]bool) map[string]interface{} {
+	// If this property object has a "type" and is not required, make it nullable.
+	if propertyName != "" && !requiredSet[propertyName] {
+		if t, ok := data["type"].(string); ok && t != "null" {
+			data["type"] = []interface{}{t, "null"}
 		}
+	}
 
-		// Build the required set for this object's own properties.
-		var childRequired map[string]bool
-		if reqList, ok := d["required"].([]interface{}); ok {
-			childRequired = make(map[string]bool, len(reqList))
-			for _, r := range reqList {
-				if s, ok := r.(string); ok {
-					childRequired[s] = true
-				}
+	// Build the required set for this object's own properties.
+	var childRequired map[string]bool
+	if reqList, ok := data["required"].([]interface{}); ok {
+		childRequired = make(map[string]bool, len(reqList))
+		for _, r := range reqList {
+			if s, ok := r.(string); ok {
+				childRequired[s] = true
 			}
 		}
+	}
 
-		// Recurse into properties with the required set from this object.
-		if props, ok := d["properties"].(map[string]interface{}); ok {
-			for pk, pv := range props {
-				props[pk] = AllowNullOptionalFields(pv, pk, childRequired)
+	// Recurse into properties with the required set from this object.
+	if props, ok := data["properties"].(map[string]interface{}); ok {
+		for pk, pv := range props {
+			if nested, ok := pv.(map[string]interface{}); ok {
+				props[pk] = AllowNullOptionalFields(nested, pk, childRequired)
 			}
 		}
+	}
 
-		// Recurse into non-property children (e.g., items, additionalProperties schema).
-		for k, v := range d {
-			if k == "properties" {
-				continue
-			}
-			d[k] = AllowNullOptionalFields(v, "", nil)
+	// Recurse into non-property children (e.g., items, additionalProperties schema).
+	for k, v := range data {
+		if k == "properties" {
+			continue
 		}
-		return d
-	case []interface{}:
-		for i, v := range d {
-			d[i] = AllowNullOptionalFields(v, "", nil)
+		if nested, ok := v.(map[string]interface{}); ok {
+			data[k] = AllowNullOptionalFields(nested, "", nil)
+		} else if arr, ok := v.([]interface{}); ok {
+			allowNullSlice(arr)
 		}
-		return d
-	default:
-		return data
+	}
+	return data
+}
+
+func allowNullSlice(arr []interface{}) {
+	for i, v := range arr {
+		if nested, ok := v.(map[string]interface{}); ok {
+			arr[i] = AllowNullOptionalFields(nested, "", nil)
+		}
 	}
 }
 
@@ -100,7 +106,7 @@ func AllowNullOptionalFields(data interface{}, propertyName string, requiredSet 
 func Convert(schema map[string]interface{}) map[string]interface{} {
 	skipRoot := os.Getenv("DENY_ROOT_ADDITIONAL_PROPERTIES") == ""
 	schema = AdditionalProperties(schema, skipRoot)
-	schema = ReplaceIntOrString(schema).(map[string]interface{})
-	schema = AllowNullOptionalFields(schema, "", nil).(map[string]interface{})
+	schema = ReplaceIntOrString(schema)
+	schema = AllowNullOptionalFields(schema, "", nil)
 	return schema
 }

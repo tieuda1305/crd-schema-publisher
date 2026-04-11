@@ -10,11 +10,11 @@ import (
 func TestGenerate_CreatesIndexHTML(t *testing.T) {
 	tmpDir := t.TempDir()
 	// 2 groups, 3 total schemas — distinct counts so we can verify each stat independently
-	os.MkdirAll(filepath.Join(tmpDir, "cert-manager.io"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "cert-manager.io", "certificate_v1.json"), []byte(`{}`), 0o644)
-	os.WriteFile(filepath.Join(tmpDir, "cert-manager.io", "issuer_v1.json"), []byte(`{}`), 0o644)
-	os.MkdirAll(filepath.Join(tmpDir, "monitoring.coreos.com"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "monitoring.coreos.com", "servicemonitor_v1.json"), []byte(`{}`), 0o644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "cert-manager.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "cert-manager.io", "certificate_v1.json"), []byte(`{}`), 0o644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "cert-manager.io", "issuer_v1.json"), []byte(`{}`), 0o644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "monitoring.coreos.com"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "monitoring.coreos.com", "servicemonitor_v1.json"), []byte(`{}`), 0o644)
 
 	err := Generate(tmpDir)
 	if err != nil {
@@ -64,10 +64,10 @@ func TestGenerate_CreatesIndexHTML(t *testing.T) {
 
 func TestGenerate_SkipsMasterStandalone(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "example.io", "test_v1.json"), []byte(`{}`), 0o644)
-	os.MkdirAll(filepath.Join(tmpDir, "master-standalone"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "master-standalone", "example.io-test-stable-v1.json"), []byte(`{}`), 0o644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "example.io", "test_v1.json"), []byte(`{}`), 0o644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "master-standalone"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "master-standalone", "example.io-test-stable-v1.json"), []byte(`{}`), 0o644)
 
 	err := Generate(tmpDir)
 	if err != nil {
@@ -84,9 +84,9 @@ func TestGenerate_SkipsMasterStandalone(t *testing.T) {
 func TestGenerate_ManySchemasFewGroups(t *testing.T) {
 	tmpDir := t.TempDir()
 	// 1 group with 5 schemas — tests that group count and schema count diverge correctly
-	os.MkdirAll(filepath.Join(tmpDir, "flux.io"), 0o755)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "flux.io"), 0o755)
 	for _, s := range []string{"a_v1.json", "b_v1.json", "c_v1.json", "d_v1.json", "e_v1.json"} {
-		os.WriteFile(filepath.Join(tmpDir, "flux.io", s), []byte(`{}`), 0o644)
+		_ = os.WriteFile(filepath.Join(tmpDir, "flux.io", s), []byte(`{}`), 0o644)
 	}
 
 	err := Generate(tmpDir)
@@ -131,8 +131,8 @@ func TestGenerate_EmptyOutputDir(t *testing.T) {
 
 func TestGenerate_CreatesFavicon(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "example.io", "test_v1.json"), []byte(`{}`), 0o644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "example.io", "test_v1.json"), []byte(`{}`), 0o644)
 
 	err := Generate(tmpDir)
 	if err != nil {
@@ -165,9 +165,9 @@ func TestGenerate_CreatesFavicon(t *testing.T) {
 
 func TestGenerate_LinksToHTMLWhenPresent(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "example.io", "thing_v1.json"), []byte(`{}`), 0o644)
-	os.WriteFile(filepath.Join(tmpDir, "example.io", "thing_v1.html"), []byte(`<html></html>`), 0o644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "example.io", "thing_v1.json"), []byte(`{}`), 0o644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "example.io", "thing_v1.html"), []byte(`<html></html>`), 0o644)
 
 	err := Generate(tmpDir)
 	if err != nil {
@@ -187,8 +187,8 @@ func TestGenerate_LinksToHTMLWhenPresent(t *testing.T) {
 
 func TestGenerate_FallsBackToJSONWhenNoHTML(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "example.io", "thing_v1.json"), []byte(`{}`), 0o644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "example.io", "thing_v1.json"), []byte(`{}`), 0o644)
 
 	err := Generate(tmpDir)
 	if err != nil {
@@ -205,10 +205,10 @@ func TestGenerate_FallsBackToJSONWhenNoHTML(t *testing.T) {
 
 func TestGenerate_SkipsNonJsonFiles(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "example.io", "thing_v1.json"), []byte(`{}`), 0o644)
-	os.WriteFile(filepath.Join(tmpDir, "example.io", "README.md"), []byte(`# hello`), 0o644)
-	os.WriteFile(filepath.Join(tmpDir, "example.io", ".gitkeep"), []byte(``), 0o644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "example.io", "thing_v1.json"), []byte(`{}`), 0o644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "example.io", "README.md"), []byte(`# hello`), 0o644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "example.io", ".gitkeep"), []byte(``), 0o644)
 
 	err := Generate(tmpDir)
 	if err != nil {

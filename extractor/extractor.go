@@ -79,68 +79,7 @@ func WriteSchemas(crds []apiextensionsv1.CustomResourceDefinition, outputDir str
 				defer wg.Done()
 				defer func() { <-sem }()
 
-				raw, err := json.Marshal(props)
-				if err != nil {
-					mu.Lock()
-					if firstErr == nil {
-						firstErr = fmt.Errorf("marshaling schema for %s/%s: %w", group, kind, err)
-					}
-					mu.Unlock()
-					return
-				}
-
-				var schema map[string]interface{}
-				if err := json.Unmarshal(raw, &schema); err != nil {
-					mu.Lock()
-					if firstErr == nil {
-						firstErr = fmt.Errorf("unmarshaling schema for %s/%s: %w", group, kind, err)
-					}
-					mu.Unlock()
-					return
-				}
-
-				schema = converter.Convert(schema)
-
-				jsonBytes, err := json.MarshalIndent(schema, "", "  ")
-				if err != nil {
-					mu.Lock()
-					if firstErr == nil {
-						firstErr = fmt.Errorf("marshaling JSON for %s/%s: %w", group, kind, err)
-					}
-					mu.Unlock()
-					return
-				}
-
-				groupDir := filepath.Join(outputDir, group)
-				if err := os.MkdirAll(groupDir, 0o755); err != nil {
-					mu.Lock()
-					if firstErr == nil {
-						firstErr = err
-					}
-					mu.Unlock()
-					return
-				}
-				filename := fmt.Sprintf("%s_%s.json", kind, versionName)
-				if err := os.WriteFile(filepath.Join(groupDir, filename), jsonBytes, 0o644); err != nil {
-					mu.Lock()
-					if firstErr == nil {
-						firstErr = err
-					}
-					mu.Unlock()
-					return
-				}
-
-				standaloneDir := filepath.Join(outputDir, "master-standalone")
-				if err := os.MkdirAll(standaloneDir, 0o755); err != nil {
-					mu.Lock()
-					if firstErr == nil {
-						firstErr = err
-					}
-					mu.Unlock()
-					return
-				}
-				standaloneName := fmt.Sprintf("%s-%s-stable-%s.json", group, kind, versionName)
-				if err := os.WriteFile(filepath.Join(standaloneDir, standaloneName), jsonBytes, 0o644); err != nil {
+				if err := writeSchemaFiles(props, kind, group, versionName, outputDir); err != nil {
 					mu.Lock()
 					if firstErr == nil {
 						firstErr = err
@@ -160,3 +99,37 @@ func WriteSchemas(crds []apiextensionsv1.CustomResourceDefinition, outputDir str
 	return count, firstErr
 }
 
+func writeSchemaFiles(props *apiextensionsv1.JSONSchemaProps, kind, group, versionName, outputDir string) error {
+	raw, err := json.Marshal(props)
+	if err != nil {
+		return fmt.Errorf("marshaling schema for %s/%s: %w", group, kind, err)
+	}
+
+	var schema map[string]interface{}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		return fmt.Errorf("unmarshaling schema for %s/%s: %w", group, kind, err)
+	}
+
+	schema = converter.Convert(schema)
+
+	jsonBytes, err := json.MarshalIndent(schema, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling JSON for %s/%s: %w", group, kind, err)
+	}
+
+	groupDir := filepath.Join(outputDir, group)
+	if err := os.MkdirAll(groupDir, 0o755); err != nil {
+		return err
+	}
+	filename := fmt.Sprintf("%s_%s.json", kind, versionName)
+	if err := os.WriteFile(filepath.Join(groupDir, filename), jsonBytes, 0o644); err != nil {
+		return err
+	}
+
+	standaloneDir := filepath.Join(outputDir, "master-standalone")
+	if err := os.MkdirAll(standaloneDir, 0o755); err != nil {
+		return err
+	}
+	standaloneName := fmt.Sprintf("%s-%s-stable-%s.json", group, kind, versionName)
+	return os.WriteFile(filepath.Join(standaloneDir, standaloneName), jsonBytes, 0o644)
+}

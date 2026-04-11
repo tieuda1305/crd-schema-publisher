@@ -83,7 +83,7 @@ func TestWriteSchemas_CreatesGroupDirAndFile(t *testing.T) {
 func TestWriteSchemas_CreatesMasterStandalone(t *testing.T) {
 	tmpDir := t.TempDir()
 	crds := []apiextensionsv1.CustomResourceDefinition{fakeCRD()}
-	WriteSchemas(crds, tmpDir)
+	_, _ = WriteSchemas(crds, tmpDir)
 	standalonePath := filepath.Join(tmpDir, "master-standalone", "example.io-test-stable-v1.json")
 	if _, err := os.Stat(standalonePath); os.IsNotExist(err) {
 		t.Fatalf("master-standalone file not found: %s", standalonePath)

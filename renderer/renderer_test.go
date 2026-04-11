@@ -237,8 +237,8 @@ func TestRenderSchema_BasicOutput(t *testing.T) {
 	}`
 
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "example.io", "myresource_v1.json"), []byte(schema), 0o644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "example.io", "myresource_v1.json"), []byte(schema), 0o644)
 
 	err := renderSchemaFile(testTemplate(t), filepath.Join(tmpDir, "example.io", "myresource_v1.json"), "example.io", "myresource_v1.json")
 	if err != nil {
@@ -305,8 +305,8 @@ func TestRenderSchema_LeafVsExpandable(t *testing.T) {
 	}`
 
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), []byte(schema), 0o644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), []byte(schema), 0o644)
 
 	err := renderSchemaFile(testTemplate(t), filepath.Join(tmpDir, "test.io", "thing_v1.json"), "test.io", "thing_v1.json")
 	if err != nil {
@@ -346,8 +346,8 @@ func TestRenderSchema_ArrayTypes(t *testing.T) {
 	}`
 
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), []byte(schema), 0o644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), []byte(schema), 0o644)
 
 	err := renderSchemaFile(testTemplate(t), filepath.Join(tmpDir, "test.io", "thing_v1.json"), "test.io", "thing_v1.json")
 	if err != nil {
@@ -377,8 +377,8 @@ func TestRenderSchema_IntOrString(t *testing.T) {
 	}`
 
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), []byte(schema), 0o644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), []byte(schema), 0o644)
 
 	err := renderSchemaFile(testTemplate(t), filepath.Join(tmpDir, "test.io", "thing_v1.json"), "test.io", "thing_v1.json")
 	if err != nil {
@@ -406,8 +406,8 @@ func TestRenderSchema_EnumValues(t *testing.T) {
 	}`
 
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), []byte(schema), 0o644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), []byte(schema), 0o644)
 
 	err := renderSchemaFile(testTemplate(t), filepath.Join(tmpDir, "test.io", "thing_v1.json"), "test.io", "thing_v1.json")
 	if err != nil {
@@ -429,8 +429,8 @@ func TestRenderSchema_MinimalSchema(t *testing.T) {
 	schema := `{"type":"object"}`
 
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "test.io", "empty_v1.json"), []byte(schema), 0o644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "test.io", "empty_v1.json"), []byte(schema), 0o644)
 
 	err := renderSchemaFile(testTemplate(t), filepath.Join(tmpDir, "test.io", "empty_v1.json"), "test.io", "empty_v1.json")
 	if err != nil {
@@ -453,16 +453,16 @@ func TestRenderSchema_MinimalSchema(t *testing.T) {
 
 func TestRenderAll_CreatesHTMLFiles(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "cert-manager.io"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "cert-manager.io", "certificate_v1.json"),
+	_ = os.MkdirAll(filepath.Join(tmpDir, "cert-manager.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "cert-manager.io", "certificate_v1.json"),
 		[]byte(`{"type":"object","properties":{"spec":{"type":"object"}}}`), 0o644)
-	os.WriteFile(filepath.Join(tmpDir, "cert-manager.io", "issuer_v1.json"),
+	_ = os.WriteFile(filepath.Join(tmpDir, "cert-manager.io", "issuer_v1.json"),
 		[]byte(`{"type":"object"}`), 0o644)
-	os.MkdirAll(filepath.Join(tmpDir, "monitoring.coreos.com"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "monitoring.coreos.com", "prometheus_v1.json"),
+	_ = os.MkdirAll(filepath.Join(tmpDir, "monitoring.coreos.com"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "monitoring.coreos.com", "prometheus_v1.json"),
 		[]byte(`{"type":"object"}`), 0o644)
-	os.MkdirAll(filepath.Join(tmpDir, "master-standalone"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "master-standalone", "test.json"),
+	_ = os.MkdirAll(filepath.Join(tmpDir, "master-standalone"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "master-standalone", "test.json"),
 		[]byte(`{"type":"object"}`), 0o644)
 
 	err := RenderAll(tmpDir)
@@ -487,9 +487,9 @@ func TestRenderAll_CreatesHTMLFiles(t *testing.T) {
 
 func TestRenderAll_SkipsNonJsonFiles(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "example.io", "thing_v1.json"), []byte(`{"type":"object"}`), 0o644)
-	os.WriteFile(filepath.Join(tmpDir, "example.io", "README.md"), []byte(`# hello`), 0o644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "example.io", "thing_v1.json"), []byte(`{"type":"object"}`), 0o644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "example.io", "README.md"), []byte(`# hello`), 0o644)
 
 	err := RenderAll(tmpDir)
 	if err != nil {
@@ -538,8 +538,8 @@ func TestRenderSchema_DeepNesting(t *testing.T) {
 	}`
 
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "test.io", "deep_v1.json"), []byte(schema), 0o644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "test.io", "deep_v1.json"), []byte(schema), 0o644)
 
 	err := renderSchemaFile(testTemplate(t), filepath.Join(tmpDir, "test.io", "deep_v1.json"), "test.io", "deep_v1.json")
 	if err != nil {

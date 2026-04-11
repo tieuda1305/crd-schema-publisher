@@ -211,7 +211,7 @@ func runPreview() error {
 		}
 		isTempDir = true
 		if err := scaffoldSampleData(dir); err != nil {
-			os.RemoveAll(dir)
+			_ = os.RemoveAll(dir)
 			return fmt.Errorf("scaffolding sample data: %w", err)
 		}
 		fmt.Printf("Using sample data in %s\n", dir)
@@ -223,7 +223,7 @@ func runPreview() error {
 		fmt.Println("Rendering schema pages...")
 		if err := renderer.RenderAll(dir); err != nil {
 			if isTempDir {
-				os.RemoveAll(dir)
+				_ = os.RemoveAll(dir)
 			}
 			return fmt.Errorf("rendering schemas: %w", err)
 		}
@@ -232,13 +232,13 @@ func runPreview() error {
 	fmt.Println("Generating index.html...")
 	if err := index.Generate(dir); err != nil {
 		if isTempDir {
-			os.RemoveAll(dir)
+			_ = os.RemoveAll(dir)
 		}
 		return fmt.Errorf("generating index: %w", err)
 	}
 
 	addr := getEnv("PREVIEW_ADDR", "127.0.0.1:8989")
-	srv := &http.Server{Addr: addr, Handler: http.FileServer(http.Dir(dir))}
+	srv := &http.Server{Addr: addr, Handler: http.FileServer(http.Dir(dir)), ReadHeaderTimeout: 10 * time.Second}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
@@ -247,13 +247,13 @@ func runPreview() error {
 		<-ctx.Done()
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer shutdownCancel()
-		srv.Shutdown(shutdownCtx)
+		_ = srv.Shutdown(shutdownCtx)
 	}()
 
 	fmt.Printf("Serving at http://%s (Ctrl+C to stop)\n", addr)
 	err := srv.ListenAndServe()
 	if isTempDir {
-		os.RemoveAll(dir)
+		_ = os.RemoveAll(dir)
 	}
 	if err == http.ErrServerClosed {
 		return nil

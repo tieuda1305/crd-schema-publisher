@@ -18,7 +18,7 @@ func TestDebounce_CoalescesRapidEvents(t *testing.T) {
 	}, done)
 
 	// Send 5 events in rapid succession
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		trigger <- struct{}{}
 		time.Sleep(10 * time.Millisecond)
 	}
