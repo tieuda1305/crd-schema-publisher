@@ -4,6 +4,20 @@ import (
 	"testing"
 )
 
+// propField extracts result["properties"][field] with checked type assertions.
+func propField(t *testing.T, result map[string]interface{}, field string) map[string]interface{} {
+	t.Helper()
+	props, ok := result["properties"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected properties to be map, got %T", result["properties"])
+	}
+	val, ok := props[field].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected %s to be map, got %T", field, props[field])
+	}
+	return val
+}
+
 func TestAdditionalProperties_AddsToObjectWithProperties(t *testing.T) {
 	schema := map[string]interface{}{
 		"type": "object",
@@ -59,7 +73,7 @@ func TestAdditionalProperties_RecursesIntoNestedObjects(t *testing.T) {
 		},
 	}
 	result := AdditionalProperties(schema, false)
-	spec := result["properties"].(map[string]interface{})["spec"].(map[string]interface{})
+	spec := propField(t, result, "spec")
 	if spec["additionalProperties"] != false {
 		t.Fatal("nested object should also get additionalProperties=false")
 	}
@@ -88,12 +102,15 @@ func TestReplaceIntOrString_ReplacesFormat(t *testing.T) {
 		},
 	}
 	result := ReplaceIntOrString(schema)
-	port := result["properties"].(map[string]interface{})["port"].(map[string]interface{})
+	port := propField(t, result, "port")
 	oneOf, ok := port["oneOf"]
 	if !ok {
 		t.Fatal("expected oneOf to replace int-or-string format")
 	}
-	items := oneOf.([]interface{})
+	items, ok := oneOf.([]interface{})
+	if !ok {
+		t.Fatalf("expected oneOf to be slice, got %T", oneOf)
+	}
 	if len(items) != 2 {
 		t.Fatalf("expected 2 oneOf items, got %d", len(items))
 	}
@@ -113,7 +130,7 @@ func TestReplaceIntOrString_LeavesOtherFormats(t *testing.T) {
 		},
 	}
 	result := ReplaceIntOrString(schema)
-	name := result["properties"].(map[string]interface{})["name"].(map[string]interface{})
+	name := propField(t, result, "name")
 	if name["format"] != "date-time" {
 		t.Fatal("should preserve non-int-or-string format")
 	}
@@ -126,7 +143,10 @@ func TestReplaceIntOrString_RecursesIntoArrayItems(t *testing.T) {
 		},
 	}
 	result := ReplaceIntOrString(schema)
-	items := result["items"].(map[string]interface{})
+	items, ok := result["items"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected items to be map")
+	}
 	if _, ok := items["oneOf"]; !ok {
 		t.Fatal("should recurse into nested objects")
 	}
@@ -142,7 +162,7 @@ func TestAllowNullOptionalFields_ConvertsNonRequiredType(t *testing.T) {
 		},
 	}
 	result := AllowNullOptionalFields(schema, "", nil)
-	name := result["properties"].(map[string]interface{})["name"].(map[string]interface{})
+	name := propField(t, result, "name")
 	typeVal := name["type"]
 	arr, ok := typeVal.([]interface{})
 	if !ok {
@@ -164,7 +184,7 @@ func TestAllowNullOptionalFields_SkipsRequiredFields(t *testing.T) {
 		},
 	}
 	result := AllowNullOptionalFields(schema, "", nil)
-	name := result["properties"].(map[string]interface{})["name"].(map[string]interface{})
+	name := propField(t, result, "name")
 	if name["type"] != "string" {
 		t.Fatal("required field type should remain a string, not array")
 	}
@@ -184,15 +204,26 @@ func TestAllowNullOptionalFields_MixedRequiredAndOptional(t *testing.T) {
 		},
 	}
 	result := AllowNullOptionalFields(schema, "", nil)
-	props := result["properties"].(map[string]interface{})
+	props, ok := result["properties"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected properties to be map")
+	}
 
 	// "name" is required — should stay as plain string
-	if props["name"].(map[string]interface{})["type"] != "string" {
+	nameField, ok := props["name"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected name to be map")
+	}
+	if nameField["type"] != "string" {
 		t.Fatal("required field 'name' should remain type string")
 	}
 
 	// "description" is NOT required — should become ["string", "null"]
-	descType := props["description"].(map[string]interface{})["type"]
+	descField, ok := props["description"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected description to be map")
+	}
+	descType := descField["type"]
 	arr, ok := descType.([]interface{})
 	if !ok {
 		t.Fatalf("optional field 'description' should have array type, got %T: %v", descType, descType)
@@ -212,7 +243,7 @@ func TestAllowNullOptionalFields_SkipsNullType(t *testing.T) {
 		},
 	}
 	result := AllowNullOptionalFields(schema, "", nil)
-	nothing := result["properties"].(map[string]interface{})["nothing"].(map[string]interface{})
+	nothing := propField(t, result, "nothing")
 	if nothing["type"] != "null" {
 		t.Fatal("null type should not be modified")
 	}
@@ -231,11 +262,11 @@ func TestConvert_AppliesAllTransforms(t *testing.T) {
 		},
 	}
 	result := Convert(schema)
-	port := result["properties"].(map[string]interface{})["port"].(map[string]interface{})
+	port := propField(t, result, "port")
 	if _, ok := port["oneOf"]; !ok {
 		t.Fatal("intOrString not applied")
 	}
-	name := result["properties"].(map[string]interface{})["name"].(map[string]interface{})
+	name := propField(t, result, "name")
 	typeVal := name["type"]
 	if _, ok := typeVal.([]interface{}); !ok {
 		t.Fatal("nullOptional not applied")
