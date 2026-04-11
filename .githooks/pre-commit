@@ -1,0 +1,13 @@
+#!/bin/sh
+# Pre-commit hook: run golangci-lint on staged Go files.
+# Setup: git config core.hooksPath .githooks
+
+if ! command -v golangci-lint >/dev/null 2>&1; then
+  echo "golangci-lint not found, skipping lint check"
+  echo "Install: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"
+  exit 0
+fi
+
+echo "Running golangci-lint..."
+golangci-lint run
+exit $?
