@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // SchemaNode represents a JSON Schema node for rendering.
@@ -212,11 +213,18 @@ func RenderAll(outputDir string) error {
 		return fmt.Errorf("parsing template: %w", err)
 	}
 
+	type renderJob struct {
+		jsonPath  string
+		groupName string
+		fileName  string
+	}
+
 	entries, err := os.ReadDir(outputDir)
 	if err != nil {
 		return fmt.Errorf("reading output dir: %w", err)
 	}
 
+	var jobs []renderJob
 	for _, entry := range entries {
 		if !entry.IsDir() || entry.Name() == "master-standalone" {
 			continue
@@ -231,11 +239,34 @@ func RenderAll(outputDir string) error {
 			if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") {
 				continue
 			}
-			jsonPath := filepath.Join(groupDir, f.Name())
-			if err := renderSchemaFile(tmpl, jsonPath, groupName, f.Name()); err != nil {
-				return fmt.Errorf("rendering %s/%s: %w", groupName, f.Name(), err)
-			}
+			jobs = append(jobs, renderJob{
+				jsonPath:  filepath.Join(groupDir, f.Name()),
+				groupName: groupName,
+				fileName:  f.Name(),
+			})
 		}
+	}
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 10)
+	errs := make(chan error, len(jobs))
+
+	for _, job := range jobs {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(j renderJob) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if err := renderSchemaFile(tmpl, j.jsonPath, j.groupName, j.fileName); err != nil {
+				errs <- fmt.Errorf("rendering %s/%s: %w", j.groupName, j.fileName, err)
+			}
+		}(job)
+	}
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		return err
 	}
 	return nil
 }
@@ -339,7 +370,13 @@ const schemaTemplate = `<!DOCTYPE html>
     display: flex; align-items: center; justify-content: space-between;
     margin-bottom: 1.5rem;
   }
-  .back-link { font-size: 0.85rem; }
+  .back-link { font-size: 0.85rem; display: flex; align-items: center; gap: 0.4rem; }
+  .back-link kbd {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 0.6rem; color: var(--fg-muted); background: var(--bg-surface);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 0.1rem 0.35rem; line-height: 1;
+  }
   .theme-toggle {
     background: none; border: 1px solid var(--border); border-radius: 6px;
     color: var(--fg-muted); cursor: pointer; padding: 0.35rem 0.6rem; font-size: 0.85rem;
@@ -370,7 +407,7 @@ const schemaTemplate = `<!DOCTYPE html>
     background: none; border: none; color: var(--fg-muted); cursor: pointer;
     font-size: 0.8rem; padding: 0.2rem 0; transition: color 0.15s;
   }
-  .toolbar button:hover, .toolbar a:hover { color: var(--accent); text-decoration: none; }
+  .toolbar button:hover, .toolbar a:hover { color: var(--accent); text-decoration: underline; }
   .prop {
     border: 1px solid var(--border); border-radius: 6px;
     margin-bottom: 0.35rem; transition: border-color 0.2s;
@@ -440,7 +477,7 @@ const schemaTemplate = `<!DOCTYPE html>
 <body>
 <div class="flare"></div>
 <div class="nav-row">
-  <a href="/" class="back-link">← Back to index</a>
+  <a href="/" class="back-link">← Back to index <kbd>Esc</kbd></a>
   <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">☀/☾</button>
 </div>
 <div class="meta-cards">
@@ -510,6 +547,15 @@ metadata:
   });
   var toast = document.getElementById('toast');
   var toastTimer;
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (document.activeElement && document.activeElement !== document.body) {
+        document.activeElement.blur();
+      }
+      location.href = '/';
+    }
+  });
   document.getElementById('copy-url').addEventListener('click', function(){
     var url = location.origin + this.dataset.url;
     navigator.clipboard.writeText(url).then(function(){

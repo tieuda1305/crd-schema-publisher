@@ -247,8 +247,11 @@ const indexTemplate = `<!DOCTYPE html>
   .schemas a .copy-hint {
     display: none; margin-left: 0.5rem;
     font-size: 0.65rem; color: var(--fg-muted); font-family: inherit;
+    padding: 0.1rem 0.4rem; border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
   }
   .schemas a:hover .copy-hint { display: inline; }
+  .schemas a .copy-hint:hover { background: var(--accent-dim); color: var(--accent); }
   .copied-toast {
     position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
     background: var(--accent); color: #09090b; padding: 0.4rem 1rem;
@@ -417,15 +420,26 @@ metadata:
     history.replaceState(null, '', q ? '#q=' + encodeURIComponent(q) : location.pathname);
   });
 
-  input.addEventListener('keydown', function(e){
-    if (e.key === 'Escape') {
-      this.value = '';
-      this.dispatchEvent(new Event('input'));
-      this.blur();
-    }
-  });
-
   document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (input.value) {
+        input.value = '';
+        input.dispatchEvent(new Event('input'));
+        input.blur();
+      } else {
+        var hadOpen = false;
+        groups.forEach(function(g){ if (g.hasAttribute('open')) { hadOpen = true; g.removeAttribute('open'); } });
+        if (hadOpen) {
+          allExpanded = false;
+          toggleAll.textContent = 'Expand all';
+        }
+        if (document.activeElement && document.activeElement !== document.body) {
+          document.activeElement.blur();
+        }
+        window.scrollTo({top: 0, behavior: 'smooth'});
+      }
+    }
     if (e.key === '/' && !e.ctrlKey && !e.metaKey && document.activeElement !== input) {
       e.preventDefault();
       input.focus();
@@ -477,6 +491,45 @@ metadata:
   document.querySelectorAll('.usage-content code').forEach(function(el){
     el.textContent = el.textContent.replace(/https:\/\/YOUR_DOMAIN/g, location.origin);
   });
+
+  // Save view state before navigating to a schema page
+  document.getElementById('groups').addEventListener('click', function(e){
+    var link = e.target.closest('.schemas a');
+    if (!link || e.target.classList.contains('copy-hint')) return;
+    var expanded = [];
+    groups.forEach(function(g){ if (g.hasAttribute('open')) expanded.push(g.dataset.group); });
+    sessionStorage.setItem('indexState', JSON.stringify({
+      expanded: expanded,
+      scroll: window.scrollY,
+      toggleAll: allExpanded,
+      search: input.value
+    }));
+  });
+
+  // Restore view state when returning from a schema page
+  var saved = sessionStorage.getItem('indexState');
+  if (saved) {
+    sessionStorage.removeItem('indexState');
+    try {
+      var state = JSON.parse(saved);
+      if (state.search) {
+        input.value = state.search;
+        input.dispatchEvent(new Event('input'));
+      }
+      if (state.expanded && state.expanded.length) {
+        groups.forEach(function(g){
+          if (state.expanded.indexOf(g.dataset.group) !== -1) g.setAttribute('open','');
+        });
+      }
+      if (state.toggleAll) {
+        allExpanded = true;
+        toggleAll.textContent = 'Collapse all';
+      }
+      if (state.scroll) {
+        window.scrollTo(0, state.scroll);
+      }
+    } catch(e) {}
+  }
 })();
 
 function toggleTheme(){
