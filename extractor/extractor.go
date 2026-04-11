@@ -133,4 +133,3 @@ func writeSchemaFiles(props *apiextensionsv1.JSONSchemaProps, kind, group, versi
 	standaloneName := fmt.Sprintf("%s-%s-stable-%s.json", group, kind, versionName)
 	return os.WriteFile(filepath.Join(standaloneDir, standaloneName), jsonBytes, 0o644)
 }
-

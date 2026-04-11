@@ -67,10 +67,10 @@ func Run(ctx context.Context, cfg Config) error {
 	healthReady.Store(true)
 
 	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
-		Lock:            lock,
-		LeaseDuration:   15 * time.Second,
-		RenewDeadline:   10 * time.Second,
-		RetryPeriod:     2 * time.Second,
+		Lock:          lock,
+		LeaseDuration: 15 * time.Second,
+		RenewDeadline: 10 * time.Second,
+		RetryPeriod:   2 * time.Second,
 		// ReleaseOnCancel releases the lease on context cancellation so another
 		// replica can acquire leadership quickly. This means the lease is released
 		// while an in-flight publish may still be running. This is safe because

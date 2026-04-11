@@ -44,3 +44,10 @@ linters:
         linters:
           - gocyclo
           - errcheck
+
+formatters:
+  enable:
+    - gofmt
+  settings:
+    gofmt:
+      simplify: true
