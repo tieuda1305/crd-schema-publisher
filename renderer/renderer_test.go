@@ -1,6 +1,9 @@
 package renderer
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -176,5 +179,300 @@ func TestConstraints(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRenderSchema_BasicOutput(t *testing.T) {
+	schema := `{
+		"type": "object",
+		"required": ["spec"],
+		"properties": {
+			"spec": {
+				"type": "object",
+				"description": "Spec defines the desired state",
+				"properties": {
+					"replicas": {
+						"type": "integer",
+						"description": "Number of replicas",
+						"minimum": 1,
+						"maximum": 10
+					},
+					"name": {
+						"type": "string",
+						"description": "Resource name",
+						"pattern": "^[a-z]+$"
+					}
+				},
+				"required": ["replicas"]
+			},
+			"status": {
+				"type": "object",
+				"description": "Status of the resource"
+			}
+		}
+	}`
+
+	tmpDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
+	os.WriteFile(filepath.Join(tmpDir, "example.io", "myresource_v1.json"), []byte(schema), 0o644)
+
+	err := renderSchemaFile(filepath.Join(tmpDir, "example.io", "myresource_v1.json"), "example.io", "myresource_v1.json")
+	if err != nil {
+		t.Fatalf("renderSchemaFile error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(tmpDir, "example.io", "myresource_v1.html"))
+	if err != nil {
+		t.Fatalf("HTML file not created: %v", err)
+	}
+
+	html := string(data)
+	checks := []struct {
+		substr string
+		desc   string
+	}{
+		{"<!DOCTYPE html>", "valid HTML document"},
+		{"Myresource v1", "page title with Kind and version"},
+		{"example.io", "group name in metadata"},
+		{"Myresource", "kind in metadata card"},
+		{"v1", "version in metadata card"},
+		{"apiVersion: example.io/v1", "YAML boilerplate"},
+		{"kind: Myresource", "YAML boilerplate kind"},
+		{"← Back to index", "back link"},
+		{"Expand all", "expand all button"},
+		{"Collapse all", "collapse all button"},
+		{"View raw schema", "raw schema link"},
+		{"myresource_v1.json", "link to JSON file"},
+		{"spec", "spec property"},
+		{"status", "status property"},
+		{"replicas", "nested property"},
+		{"Spec defines the desired state", "property description"},
+		{"Number of replicas", "nested property description"},
+		{"required", "required badge"},
+		{"integer", "type badge"},
+		{"object", "type badge for object"},
+		{"minimum: 1", "constraint display"},
+		{"maximum: 10", "constraint display"},
+		{"pattern: ^[a-z]+$", "constraint display"},
+		{"toggleTheme", "theme toggle function"},
+		{"favicon.svg", "favicon link"},
+		{"--accent", "CSS custom properties"},
+		{"body::before", "starfield CSS"},
+	}
+	for _, c := range checks {
+		if !strings.Contains(html, c.substr) {
+			t.Errorf("HTML should contain %s (looked for %q)", c.desc, c.substr)
+		}
+	}
+}
+
+func TestRenderSchema_LeafVsExpandable(t *testing.T) {
+	schema := `{
+		"type": "object",
+		"properties": {
+			"name": {"type": "string"},
+			"nested": {
+				"type": "object",
+				"properties": {
+					"inner": {"type": "string"}
+				}
+			}
+		}
+	}`
+
+	tmpDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
+	os.WriteFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), []byte(schema), 0o644)
+
+	err := renderSchemaFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), "test.io", "thing_v1.json")
+	if err != nil {
+		t.Fatalf("renderSchemaFile error: %v", err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(tmpDir, "test.io", "thing_v1.html"))
+	html := string(data)
+
+	if !strings.Contains(html, "<details") {
+		t.Error("expandable property should use <details> element")
+	}
+	if !strings.Contains(html, "prop-leaf") {
+		t.Error("leaf property should use prop-leaf class")
+	}
+}
+
+func TestRenderSchema_ArrayTypes(t *testing.T) {
+	schema := `{
+		"type": "object",
+		"properties": {
+			"tags": {
+				"type": "array",
+				"items": {"type": "string"},
+				"description": "List of tags"
+			},
+			"servers": {
+				"type": "array",
+				"items": {
+					"type": "object",
+					"properties": {
+						"host": {"type": "string"}
+					}
+				}
+			}
+		}
+	}`
+
+	tmpDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
+	os.WriteFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), []byte(schema), 0o644)
+
+	err := renderSchemaFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), "test.io", "thing_v1.json")
+	if err != nil {
+		t.Fatalf("renderSchemaFile error: %v", err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(tmpDir, "test.io", "thing_v1.html"))
+	html := string(data)
+
+	if !strings.Contains(html, "[]string") {
+		t.Error("should show []string for string array")
+	}
+	if !strings.Contains(html, "[]object") {
+		t.Error("should show []object for object array")
+	}
+}
+
+func TestRenderSchema_IntOrString(t *testing.T) {
+	schema := `{
+		"type": "object",
+		"properties": {
+			"port": {
+				"oneOf": [{"type": "string"}, {"type": "integer"}],
+				"description": "Port number or name"
+			}
+		}
+	}`
+
+	tmpDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
+	os.WriteFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), []byte(schema), 0o644)
+
+	err := renderSchemaFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), "test.io", "thing_v1.json")
+	if err != nil {
+		t.Fatalf("renderSchemaFile error: %v", err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(tmpDir, "test.io", "thing_v1.html"))
+	html := string(data)
+
+	if !strings.Contains(html, "string | integer") {
+		t.Error("should show 'string | integer' for oneOf int-or-string")
+	}
+}
+
+func TestRenderSchema_EnumValues(t *testing.T) {
+	schema := `{
+		"type": "object",
+		"properties": {
+			"protocol": {
+				"type": "string",
+				"enum": ["TCP", "UDP", "SCTP"],
+				"description": "Network protocol"
+			}
+		}
+	}`
+
+	tmpDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
+	os.WriteFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), []byte(schema), 0o644)
+
+	err := renderSchemaFile(filepath.Join(tmpDir, "test.io", "thing_v1.json"), "test.io", "thing_v1.json")
+	if err != nil {
+		t.Fatalf("renderSchemaFile error: %v", err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(tmpDir, "test.io", "thing_v1.html"))
+	html := string(data)
+
+	if !strings.Contains(html, "TCP") {
+		t.Error("should show enum values")
+	}
+	if !strings.Contains(html, "enum:") {
+		t.Error("should label enum constraint")
+	}
+}
+
+func TestRenderSchema_MinimalSchema(t *testing.T) {
+	schema := `{"type":"object"}`
+
+	tmpDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
+	os.WriteFile(filepath.Join(tmpDir, "test.io", "empty_v1.json"), []byte(schema), 0o644)
+
+	err := renderSchemaFile(filepath.Join(tmpDir, "test.io", "empty_v1.json"), "test.io", "empty_v1.json")
+	if err != nil {
+		t.Fatalf("renderSchemaFile error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(tmpDir, "test.io", "empty_v1.html"))
+	if err != nil {
+		t.Fatalf("HTML file not created: %v", err)
+	}
+
+	html := string(data)
+	if !strings.Contains(html, "<!DOCTYPE html>") {
+		t.Error("minimal schema should still produce valid HTML")
+	}
+	if !strings.Contains(html, "Empty") {
+		t.Error("should derive Kind from filename")
+	}
+}
+
+func TestRenderSchema_DeepNesting(t *testing.T) {
+	schema := `{
+		"type": "object",
+		"required": ["level1"],
+		"properties": {
+			"level1": {
+				"type": "object",
+				"required": ["level2"],
+				"properties": {
+					"level2": {
+						"type": "object",
+						"required": ["level3"],
+						"properties": {
+							"level3": {
+								"type": "string",
+								"description": "deeply nested"
+							}
+						}
+					}
+				}
+			}
+		}
+	}`
+
+	tmpDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tmpDir, "test.io"), 0o755)
+	os.WriteFile(filepath.Join(tmpDir, "test.io", "deep_v1.json"), []byte(schema), 0o644)
+
+	err := renderSchemaFile(filepath.Join(tmpDir, "test.io", "deep_v1.json"), "test.io", "deep_v1.json")
+	if err != nil {
+		t.Fatalf("renderSchemaFile error: %v", err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(tmpDir, "test.io", "deep_v1.html"))
+	html := string(data)
+
+	if !strings.Contains(html, "level1") {
+		t.Error("should show level1")
+	}
+	if !strings.Contains(html, "level2") {
+		t.Error("should show level2")
+	}
+	if !strings.Contains(html, "level3") {
+		t.Error("should show level3")
+	}
+	if !strings.Contains(html, "deeply nested") {
+		t.Error("should show deeply nested description")
 	}
 }

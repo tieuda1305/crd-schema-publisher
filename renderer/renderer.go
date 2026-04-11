@@ -1,7 +1,10 @@
 package renderer
 
 import (
+	"encoding/json"
 	"fmt"
+	"html/template"
+	"os"
 	"sort"
 	"strings"
 )
@@ -129,6 +132,368 @@ func (n *SchemaNode) Constraints() []string {
 	}
 	return cs
 }
+
+// titleCase uppercases the first letter of s.
+func titleCase(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// schemaPageData holds template data for a single schema page.
+type schemaPageData struct {
+	Kind     string
+	Group    string
+	Version  string
+	JSONPath string
+	Schema   *SchemaNode
+}
+
+// renderSchemaFile reads a JSON schema file and writes a sibling .html file.
+func renderSchemaFile(jsonPath, group, filename string) error {
+	data, err := os.ReadFile(jsonPath)
+	if err != nil {
+		return fmt.Errorf("reading schema %s: %w", jsonPath, err)
+	}
+
+	var schema SchemaNode
+	if err := json.Unmarshal(data, &schema); err != nil {
+		return fmt.Errorf("parsing schema %s: %w", jsonPath, err)
+	}
+
+	base := strings.TrimSuffix(filename, ".json")
+	parts := strings.SplitN(base, "_", 2)
+	kind := titleCase(parts[0])
+	version := ""
+	if len(parts) == 2 {
+		version = parts[1]
+	}
+
+	pageData := schemaPageData{
+		Kind:     kind,
+		Group:    group,
+		Version:  version,
+		JSONPath: "/" + group + "/" + filename,
+		Schema:   &schema,
+	}
+
+	funcMap := template.FuncMap{
+		"childNode": func(n *SchemaNode) *SchemaNode {
+			if len(n.Properties) > 0 {
+				return n
+			}
+			if n.Items != nil && len(n.Items.Properties) > 0 {
+				return n.Items
+			}
+			return n
+		},
+		"safeHTML": func(s string) template.HTML {
+			return template.HTML(template.HTMLEscapeString(s))
+		},
+	}
+
+	tmpl, err := template.New("schema").Funcs(funcMap).Parse(schemaTemplate)
+	if err != nil {
+		return fmt.Errorf("parsing template: %w", err)
+	}
+
+	htmlPath := strings.TrimSuffix(jsonPath, ".json") + ".html"
+	f, err := os.Create(htmlPath)
+	if err != nil {
+		return fmt.Errorf("creating %s: %w", htmlPath, err)
+	}
+	defer f.Close()
+
+	return tmpl.Execute(f, pageData)
+}
+
+const schemaTemplate = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Kind}} {{.Version}} — {{.Group}}</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+  :root {
+    --bg: #09090b;
+    --bg-surface: rgba(24, 24, 27, 0.6);
+    --bg-hover: rgba(24, 24, 27, 0.8);
+    --fg: #fafafa;
+    --fg-muted: #a1a1aa;
+    --accent: #6bc1fe;
+    --accent-dim: rgba(107, 193, 254, 0.15);
+    --border: rgba(255, 255, 255, 0.1);
+    --border-active: #6bc1fe;
+    --required-bg: rgba(251, 191, 36, 0.15);
+    --required-fg: #fbbf24;
+    --stripes-dark: repeating-linear-gradient(100deg, #000 0%, #000 7%, transparent 10%, transparent 12%, #000 16%);
+    --rainbow: repeating-linear-gradient(100deg, #fff 10%, #fff 16%, #fff 22%, #fff 30%);
+  }
+  .light {
+    --bg: #f5f7fa;
+    --bg-surface: #ffffff;
+    --bg-hover: #edf0f4;
+    --fg: #18181b;
+    --fg-muted: #6b7785;
+    --accent: #2563b0;
+    --accent-dim: rgba(37, 99, 176, 0.08);
+    --border: #d8dde4;
+    --border-active: #2563b0;
+    --required-bg: rgba(217, 119, 6, 0.1);
+    --required-fg: #b45309;
+    --stripes-dark: none;
+    --rainbow: none;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--fg);
+    max-width: 920px; margin: 0 auto; padding: 2.5rem 1.25rem;
+    position: relative; z-index: 1;
+    transition: background 0.2s, color 0.2s;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: -2;
+    pointer-events: none;
+    background-image:
+      radial-gradient(1.5px 1.5px at 31px 47px, rgba(255,255,255,1), transparent),
+      radial-gradient(1px 1px at 212px 23px, rgba(255,255,255,0.7), transparent),
+      radial-gradient(1.5px 1.5px at 68px 289px, rgba(255,255,255,0.84), transparent),
+      radial-gradient(1px 1px at 313px 151px, rgba(255,255,255,0.56), transparent),
+      radial-gradient(1px 1px at 157px 371px, rgba(255,255,255,0.6), transparent),
+      radial-gradient(2px 2px at 19px 83px, rgba(255,255,255,0.96), transparent),
+      radial-gradient(1px 1px at 301px 41px, rgba(255,255,255,0.6), transparent),
+      radial-gradient(1.5px 1.5px at 127px 409px, rgba(255,255,255,0.8), transparent),
+      radial-gradient(1px 1px at 443px 237px, rgba(255,255,255,0.5), transparent),
+      radial-gradient(1.5px 1.5px at 67px 491px, rgba(255,255,255,0.72), transparent),
+      radial-gradient(1px 1px at 11px 37px, rgba(255,255,255,0.72), transparent),
+      radial-gradient(1.5px 1.5px at 191px 213px, rgba(255,255,255,0.9), transparent),
+      radial-gradient(1px 1px at 53px 7px, rgba(255,255,255,0.5), transparent),
+      radial-gradient(1px 1px at 271px 103px, rgba(255,255,255,0.64), transparent);
+    background-size:
+      397px 397px, 397px 397px, 397px 397px, 397px 397px, 397px 397px,
+      509px 509px, 509px 509px, 509px 509px, 509px 509px, 509px 509px,
+      311px 311px, 311px 311px, 311px 311px, 311px 311px;
+    mask-image: linear-gradient(to bottom, black 0%, rgba(0,0,0,0.35) 45%, transparent 80%);
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, rgba(0,0,0,0.35) 45%, transparent 80%);
+  }
+  .flare {
+    position: fixed; top: 0; right: 0;
+    width: 100vw; height: 450px; z-index: -1;
+    pointer-events: none;
+    background-image: var(--stripes-dark), var(--rainbow);
+    background-size: 300% 200%;
+    background-position: 50% 50%;
+    filter: opacity(50%) saturate(200%);
+    opacity: 0.25;
+    mask-image: radial-gradient(ellipse at 100% 0%, black 40%, transparent 70%);
+    -webkit-mask-image: radial-gradient(ellipse at 100% 0%, black 40%, transparent 70%);
+  }
+  .flare::after {
+    content: '';
+    position: absolute; inset: 0;
+    background-image: var(--stripes-dark), var(--rainbow);
+    background-size: 200% 100%;
+    background-attachment: fixed;
+    mix-blend-mode: difference;
+  }
+  .light body::before, .light .flare { display: none; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .nav-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1.5rem;
+  }
+  .back-link { font-size: 0.85rem; }
+  .theme-toggle {
+    background: none; border: 1px solid var(--border); border-radius: 6px;
+    color: var(--fg-muted); cursor: pointer; padding: 0.35rem 0.6rem; font-size: 0.85rem;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .meta-cards {
+    display: flex; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap;
+  }
+  .meta-card {
+    background: var(--bg-surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 0.5rem 1rem;
+  }
+  .meta-card .label { font-size: 0.7rem; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .meta-card .value { font-size: 1rem; font-weight: 600; }
+  .yaml-block {
+    background: var(--bg-surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1.5rem;
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+    font-size: 0.8rem; white-space: pre; overflow-x: auto; color: var(--fg);
+  }
+  .toolbar {
+    display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;
+    align-items: center; justify-content: space-between;
+  }
+  .toolbar-left { display: flex; gap: 0.75rem; }
+  .toolbar button, .toolbar a {
+    background: none; border: none; color: var(--fg-muted); cursor: pointer;
+    font-size: 0.8rem; padding: 0.2rem 0; transition: color 0.15s;
+  }
+  .toolbar button:hover, .toolbar a:hover { color: var(--accent); text-decoration: none; }
+  .prop {
+    border: 1px solid var(--border); border-radius: 6px;
+    margin-bottom: 0.35rem; transition: border-color 0.2s;
+  }
+  .prop[open] { border-color: var(--border-active); border-left-width: 2px; }
+  .prop > summary {
+    padding: 0.5rem 0.75rem; cursor: pointer;
+    font-size: 0.85rem; background: var(--bg-surface); border-radius: 6px;
+    list-style: none; display: flex; align-items: center; gap: 0.5rem;
+    transition: background 0.15s;
+  }
+  .prop > summary::-webkit-details-marker { display: none; }
+  .prop > summary::before { content: "\25B8"; color: var(--fg-muted); font-size: 0.7rem; }
+  .prop[open] > summary::before { content: "\25BE"; color: var(--accent); }
+  .prop > summary:hover { background: var(--bg-hover); }
+  .prop-content { padding: 0.5rem 0.75rem 0.75rem; padding-left: 1.5rem; }
+  .prop-leaf {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem; display: flex; align-items: flex-start; gap: 0.5rem;
+    border: 1px solid var(--border); border-radius: 6px;
+    margin-bottom: 0.35rem; background: var(--bg-surface);
+  }
+  .prop-leaf .prop-name { min-width: 0; }
+  .prop-name {
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+    color: var(--accent); font-weight: 600; white-space: nowrap;
+  }
+  .type-badge {
+    background: var(--accent-dim); color: var(--accent);
+    font-size: 0.65rem; font-weight: 700; padding: 0.1rem 0.4rem;
+    border-radius: 8px; white-space: nowrap;
+  }
+  .required-badge {
+    background: var(--required-bg); color: var(--required-fg);
+    font-size: 0.65rem; font-weight: 700; padding: 0.1rem 0.4rem;
+    border-radius: 8px; white-space: nowrap;
+  }
+  .prop-desc { color: var(--fg-muted); font-size: 0.82rem; margin-top: 0.25rem; }
+  .prop-constraints {
+    color: var(--fg-muted); font-size: 0.75rem; margin-top: 0.2rem;
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+  }
+  .prop-children { margin-top: 0.5rem; }
+  .leaf-desc { color: var(--fg-muted); font-size: 0.82rem; flex: 1; min-width: 0; }
+  .leaf-constraints {
+    color: var(--fg-muted); font-size: 0.75rem; margin-top: 0.15rem;
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+  }
+  .copied-toast {
+    position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+    background: var(--accent); color: #09090b; padding: 0.4rem 1rem;
+    border-radius: 6px; font-size: 0.8rem; font-weight: 600;
+    opacity: 0; transition: opacity 0.2s;
+    pointer-events: none; z-index: 10;
+  }
+  .copied-toast.show { opacity: 1; }
+  footer {
+    margin-top: 3rem; padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    text-align: center; font-size: 0.8rem; color: var(--fg-muted);
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+</style>
+<script>if(localStorage.getItem('theme')==='light')document.documentElement.className='light';</script>
+</head>
+<body>
+<div class="flare"></div>
+<div class="nav-row">
+  <a href="/" class="back-link">← Back to index</a>
+  <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">☀/☾</button>
+</div>
+<div class="meta-cards">
+  <div class="meta-card"><div class="label">Kind</div><div class="value">{{.Kind}}</div></div>
+  <div class="meta-card"><div class="label">Group</div><div class="value">{{.Group}}</div></div>
+  <div class="meta-card"><div class="label">Version</div><div class="value">{{.Version}}</div></div>
+</div>
+<div class="yaml-block">apiVersion: {{.Group}}/{{.Version}}
+kind: {{.Kind}}
+metadata:
+  name: example</div>
+<div class="toolbar">
+  <div class="toolbar-left">
+    <button id="expand-all">Expand all</button>
+    <button id="collapse-all">Collapse all</button>
+  </div>
+  <div class="toolbar-left">
+    <a href="{{.JSONPath}}" target="_blank">View raw schema</a>
+    <button id="copy-url" data-url="{{.JSONPath}}">Copy schema URL</button>
+  </div>
+</div>
+{{- define "properties"}}
+{{- range .SortedProperties}}
+{{- if .Node.HasChildren}}
+<details class="prop">
+<summary>
+  <span class="prop-name">{{.Name}}</span>
+  <span class="type-badge">{{.Node.DisplayType}}</span>
+  {{- if $.IsRequired .Name}} <span class="required-badge">required</span>{{end}}
+</summary>
+<div class="prop-content">
+  {{- if .Node.Description}}<div class="prop-desc">{{.Node.Description}}</div>{{end}}
+  {{- range .Node.Constraints}}<div class="prop-constraints">{{safeHTML .}}</div>{{end}}
+  <div class="prop-children">
+  {{- template "properties" (childNode .Node)}}
+  </div>
+</div>
+</details>
+{{- else}}
+<div class="prop-leaf">
+  <span class="prop-name">{{.Name}}</span>
+  <span class="type-badge">{{.Node.DisplayType}}</span>
+  {{- if $.IsRequired .Name}} <span class="required-badge">required</span>{{end}}
+  <div class="leaf-desc">
+    {{- if .Node.Description}}{{.Node.Description}}{{end}}
+    {{- range .Node.Constraints}}<div class="leaf-constraints">{{safeHTML .}}</div>{{end}}
+  </div>
+</div>
+{{- end}}
+{{- end}}
+{{- end}}
+<div id="properties">
+{{- template "properties" .Schema}}
+</div>
+<div class="copied-toast" id="toast">Copied!</div>
+<footer>
+  Generated by <a href="https://github.com/sholdee/crd-schema-publisher">crd-schema-publisher</a>
+</footer>
+<script>
+(function(){
+  var props = document.querySelectorAll('.prop');
+  document.getElementById('expand-all').addEventListener('click', function(){
+    props.forEach(function(p){ p.setAttribute('open',''); });
+  });
+  document.getElementById('collapse-all').addEventListener('click', function(){
+    props.forEach(function(p){ p.removeAttribute('open'); });
+  });
+  var toast = document.getElementById('toast');
+  var toastTimer;
+  document.getElementById('copy-url').addEventListener('click', function(){
+    var url = location.origin + this.dataset.url;
+    navigator.clipboard.writeText(url).then(function(){
+      clearTimeout(toastTimer);
+      toast.classList.add('show');
+      toastTimer = setTimeout(function(){ toast.classList.remove('show'); }, 1500);
+    });
+  });
+})();
+function toggleTheme(){
+  document.documentElement.classList.toggle('light');
+  localStorage.setItem('theme', document.documentElement.classList.contains('light') ? 'light' : 'dark');
+}
+</script>
+</body>
+</html>`
 
 // resolveType extracts the non-null type from the Type field.
 func (n *SchemaNode) resolveType() string {
