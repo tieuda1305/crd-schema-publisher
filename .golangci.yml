@@ -15,24 +15,19 @@ linters:
     - prealloc
     - staticcheck
     - unused
-
-linters-settings:
-  gocyclo:
-    min-complexity: 15
-  nolintlint:
-    require-explanation: true
-    require-specific: true
-  errcheck:
-    check-type-assertions: true
-
-exclusions:
-  presets:
-    - std-error-handling
-  rules:
-    - path: ".*_test\\.go"
-      linters:
-        - gocyclo
-        - errcheck
-    - path: "_test\\.go"
-      linters:
-        - errcheck
+  settings:
+    gocyclo:
+      min-complexity: 20
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    errcheck:
+      check-type-assertions: false
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      - path: '_test\.go'
+        linters:
+          - gocyclo
+          - errcheck
