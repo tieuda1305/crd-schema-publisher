@@ -195,6 +195,43 @@ func renderSchemaFile(tmpl *template.Template, jsonPath, group, filename string)
 	return f.Close()
 }
 
+type renderJob struct {
+	jsonPath  string
+	groupName string
+	fileName  string
+}
+
+func collectRenderJobs(outputDir string) ([]renderJob, error) {
+	entries, err := os.ReadDir(outputDir)
+	if err != nil {
+		return nil, fmt.Errorf("reading output dir: %w", err)
+	}
+
+	var jobs []renderJob
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name() == "master-standalone" {
+			continue
+		}
+		groupName := entry.Name()
+		groupDir := filepath.Join(outputDir, groupName)
+		files, err := os.ReadDir(groupDir)
+		if err != nil {
+			return nil, fmt.Errorf("reading group dir %s: %w", groupName, err)
+		}
+		for _, f := range files {
+			if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") {
+				continue
+			}
+			jobs = append(jobs, renderJob{
+				jsonPath:  filepath.Join(groupDir, f.Name()),
+				groupName: groupName,
+				fileName:  f.Name(),
+			})
+		}
+	}
+	return jobs, nil
+}
+
 // RenderAll walks the output directory and generates an HTML page for each JSON schema.
 // Skips the master-standalone directory and non-JSON files.
 func RenderAll(outputDir string) error {
@@ -218,38 +255,9 @@ func RenderAll(outputDir string) error {
 		return fmt.Errorf("parsing template: %w", err)
 	}
 
-	type renderJob struct {
-		jsonPath  string
-		groupName string
-		fileName  string
-	}
-
-	entries, err := os.ReadDir(outputDir)
+	jobs, err := collectRenderJobs(outputDir)
 	if err != nil {
-		return fmt.Errorf("reading output dir: %w", err)
-	}
-
-	var jobs []renderJob
-	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() == "master-standalone" {
-			continue
-		}
-		groupName := entry.Name()
-		groupDir := filepath.Join(outputDir, groupName)
-		files, err := os.ReadDir(groupDir)
-		if err != nil {
-			return fmt.Errorf("reading group dir %s: %w", groupName, err)
-		}
-		for _, f := range files {
-			if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") {
-				continue
-			}
-			jobs = append(jobs, renderJob{
-				jsonPath:  filepath.Join(groupDir, f.Name()),
-				groupName: groupName,
-				fileName:  f.Name(),
-			})
-		}
+		return err
 	}
 
 	var wg sync.WaitGroup

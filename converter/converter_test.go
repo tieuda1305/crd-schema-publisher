@@ -88,7 +88,7 @@ func TestReplaceIntOrString_ReplacesFormat(t *testing.T) {
 		},
 	}
 	result := ReplaceIntOrString(schema)
-	port := result.(map[string]interface{})["properties"].(map[string]interface{})["port"].(map[string]interface{})
+	port := result["properties"].(map[string]interface{})["port"].(map[string]interface{})
 	oneOf, ok := port["oneOf"]
 	if !ok {
 		t.Fatal("expected oneOf to replace int-or-string format")
@@ -113,7 +113,7 @@ func TestReplaceIntOrString_LeavesOtherFormats(t *testing.T) {
 		},
 	}
 	result := ReplaceIntOrString(schema)
-	name := result.(map[string]interface{})["properties"].(map[string]interface{})["name"].(map[string]interface{})
+	name := result["properties"].(map[string]interface{})["name"].(map[string]interface{})
 	if name["format"] != "date-time" {
 		t.Fatal("should preserve non-int-or-string format")
 	}
@@ -126,7 +126,7 @@ func TestReplaceIntOrString_RecursesIntoArrayItems(t *testing.T) {
 		},
 	}
 	result := ReplaceIntOrString(schema)
-	items := result.(map[string]interface{})["items"].(map[string]interface{})
+	items := result["items"].(map[string]interface{})
 	if _, ok := items["oneOf"]; !ok {
 		t.Fatal("should recurse into nested objects")
 	}
@@ -142,7 +142,7 @@ func TestAllowNullOptionalFields_ConvertsNonRequiredType(t *testing.T) {
 		},
 	}
 	result := AllowNullOptionalFields(schema, "", nil)
-	name := result.(map[string]interface{})["properties"].(map[string]interface{})["name"].(map[string]interface{})
+	name := result["properties"].(map[string]interface{})["name"].(map[string]interface{})
 	typeVal := name["type"]
 	arr, ok := typeVal.([]interface{})
 	if !ok {
@@ -164,7 +164,7 @@ func TestAllowNullOptionalFields_SkipsRequiredFields(t *testing.T) {
 		},
 	}
 	result := AllowNullOptionalFields(schema, "", nil)
-	name := result.(map[string]interface{})["properties"].(map[string]interface{})["name"].(map[string]interface{})
+	name := result["properties"].(map[string]interface{})["name"].(map[string]interface{})
 	if name["type"] != "string" {
 		t.Fatal("required field type should remain a string, not array")
 	}
@@ -184,7 +184,7 @@ func TestAllowNullOptionalFields_MixedRequiredAndOptional(t *testing.T) {
 		},
 	}
 	result := AllowNullOptionalFields(schema, "", nil)
-	props := result.(map[string]interface{})["properties"].(map[string]interface{})
+	props := result["properties"].(map[string]interface{})
 
 	// "name" is required — should stay as plain string
 	if props["name"].(map[string]interface{})["type"] != "string" {
@@ -212,7 +212,7 @@ func TestAllowNullOptionalFields_SkipsNullType(t *testing.T) {
 		},
 	}
 	result := AllowNullOptionalFields(schema, "", nil)
-	nothing := result.(map[string]interface{})["properties"].(map[string]interface{})["nothing"].(map[string]interface{})
+	nothing := result["properties"].(map[string]interface{})["nothing"].(map[string]interface{})
 	if nothing["type"] != "null" {
 		t.Fatal("null type should not be modified")
 	}

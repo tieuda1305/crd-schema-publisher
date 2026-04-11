@@ -17,12 +17,12 @@ linters:
     - unused
   settings:
     gocyclo:
-      min-complexity: 20
+      min-complexity: 15
     nolintlint:
       require-explanation: true
       require-specific: true
     errcheck:
-      check-type-assertions: false
+      check-type-assertions: true
   exclusions:
     presets:
       - std-error-handling
