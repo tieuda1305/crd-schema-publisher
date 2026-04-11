@@ -11,8 +11,9 @@ import (
 )
 
 type schemaEntry struct {
-	Name string
-	Path string
+	Name     string
+	Path     string
+	HtmlPath string
 }
 
 type groupData struct {
@@ -345,7 +346,7 @@ metadata:
 <details class="group" data-group="{{.Name}}">
 <summary><span class="group-name">{{.Name}}</span> <span class="badge">{{len .Schemas}}</span></summary>
 <div class="schemas">
-{{range .Schemas}}<a href="/{{.Path}}" data-schema="{{.Name}}" data-url="/{{.Path}}">{{.Name}}<span class="copy-hint">copy URL</span></a>
+{{range .Schemas}}<a href="/{{.HtmlPath}}" data-schema="{{.Name}}" data-url="/{{.Path}}">{{.Name}}<span class="copy-hint">copy URL</span></a>
 {{end}}</div>
 </details>
 {{end}}
@@ -509,9 +510,16 @@ func Generate(outputDir string) error {
 			if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") {
 				continue
 			}
+			jsonPath := groupName + "/" + f.Name()
+			htmlPath := jsonPath
+			htmlFile := strings.TrimSuffix(f.Name(), ".json") + ".html"
+			if _, err := os.Stat(filepath.Join(groupDir, htmlFile)); err == nil {
+				htmlPath = groupName + "/" + htmlFile
+			}
 			groups[groupName] = append(groups[groupName], schemaEntry{
-				Name: f.Name(),
-				Path: groupName + "/" + f.Name(),
+				Name:     f.Name(),
+				Path:     jsonPath,
+				HtmlPath: htmlPath,
 			})
 			totalCount++
 		}
