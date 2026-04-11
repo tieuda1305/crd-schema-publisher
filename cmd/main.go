@@ -14,6 +14,7 @@ import (
 	"github.com/sholdee/crd-schema-publisher/extractor"
 	"github.com/sholdee/crd-schema-publisher/index"
 	"github.com/sholdee/crd-schema-publisher/publisher"
+	"github.com/sholdee/crd-schema-publisher/renderer"
 	"github.com/sholdee/crd-schema-publisher/watcher"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 )
@@ -98,6 +99,13 @@ func runExtract() error {
 		return err
 	}
 	fmt.Printf("Wrote %d JSON schemas to %s\n", count, outputDir)
+
+	if os.Getenv("SKIP_RENDER") != "true" {
+		fmt.Println("Rendering schema pages...")
+		if err := renderer.RenderAll(outputDir); err != nil {
+			return fmt.Errorf("rendering schemas: %w", err)
+		}
+	}
 
 	fmt.Println("Generating index.html...")
 	if err := index.Generate(outputDir); err != nil {
@@ -209,6 +217,16 @@ func runPreview() error {
 		fmt.Printf("Using sample data in %s\n", dir)
 	} else {
 		fmt.Printf("Using existing output at %s\n", dir)
+	}
+
+	if os.Getenv("SKIP_RENDER") != "true" {
+		fmt.Println("Rendering schema pages...")
+		if err := renderer.RenderAll(dir); err != nil {
+			if isTempDir {
+				os.RemoveAll(dir)
+			}
+			return fmt.Errorf("rendering schemas: %w", err)
+		}
 	}
 
 	fmt.Println("Generating index.html...")

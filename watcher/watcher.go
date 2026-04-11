@@ -14,6 +14,7 @@ import (
 	"github.com/sholdee/crd-schema-publisher/extractor"
 	"github.com/sholdee/crd-schema-publisher/index"
 	"github.com/sholdee/crd-schema-publisher/publisher"
+	"github.com/sholdee/crd-schema-publisher/renderer"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -239,6 +240,12 @@ func publishCycle(cfg Config) error {
 		return fmt.Errorf("writing schemas: %w", err)
 	}
 	log.Printf("Wrote %d schemas", count)
+
+	if os.Getenv("SKIP_RENDER") != "true" {
+		if err := renderer.RenderAll(cfg.OutputDir); err != nil {
+			return fmt.Errorf("rendering schemas: %w", err)
+		}
+	}
 
 	// Generate index
 	if err := index.Generate(cfg.OutputDir); err != nil {

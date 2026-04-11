@@ -163,6 +163,46 @@ func TestGenerate_CreatesFavicon(t *testing.T) {
 	}
 }
 
+func TestGenerate_LinksToHTMLWhenPresent(t *testing.T) {
+	tmpDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
+	os.WriteFile(filepath.Join(tmpDir, "example.io", "thing_v1.json"), []byte(`{}`), 0o644)
+	os.WriteFile(filepath.Join(tmpDir, "example.io", "thing_v1.html"), []byte(`<html></html>`), 0o644)
+
+	err := Generate(tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(tmpDir, "index.html"))
+	html := string(data)
+
+	if !strings.Contains(html, `href="/example.io/thing_v1.html"`) {
+		t.Error("schema link should point to .html when HTML file exists")
+	}
+	if !strings.Contains(html, `data-url="/example.io/thing_v1.json"`) {
+		t.Error("data-url should always point to .json for copy behavior")
+	}
+}
+
+func TestGenerate_FallsBackToJSONWhenNoHTML(t *testing.T) {
+	tmpDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
+	os.WriteFile(filepath.Join(tmpDir, "example.io", "thing_v1.json"), []byte(`{}`), 0o644)
+
+	err := Generate(tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(tmpDir, "index.html"))
+	html := string(data)
+
+	if !strings.Contains(html, `href="/example.io/thing_v1.json"`) {
+		t.Error("schema link should fall back to .json when no HTML file exists")
+	}
+}
+
 func TestGenerate_SkipsNonJsonFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 	os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
