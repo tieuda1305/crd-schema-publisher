@@ -334,7 +334,7 @@ func (p *Publisher) uploadBucket(jwt string, files []*fileEntry) error {
 	}
 	url := fmt.Sprintf("%s/pages/assets/upload", p.assetsURL())
 	var lastErr error
-	for attempt := 0; attempt < maxUploadRetries; attempt++ {
+	for attempt := range maxUploadRetries {
 		req, err := http.NewRequest("POST", url, bytes.NewReader(body))
 		if err != nil {
 			return fmt.Errorf("building request: %w", err)
@@ -401,7 +401,7 @@ func (p *Publisher) createDeployment(manifest map[string]string) (string, error)
 		return "", fmt.Errorf("marshaling manifest: %w", err)
 	}
 	var lastErr error
-	for attempt := 0; attempt < maxDeployRetries; attempt++ {
+	for attempt := range maxDeployRetries {
 		var body bytes.Buffer
 		writer := multipart.NewWriter(&body)
 		part, err := writer.CreateFormField("manifest")

@@ -298,7 +298,7 @@ func startHealthServer(port string, ready *atomic.Bool) *http.Server {
 			_, _ = w.Write([]byte("not ready"))
 		}
 	})
-	server := &http.Server{Addr: ":" + port, Handler: mux}
+	server := &http.Server{Addr: ":" + port, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("Health server error: %v", err)

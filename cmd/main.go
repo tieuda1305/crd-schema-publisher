@@ -238,7 +238,7 @@ func runPreview() error {
 	}
 
 	addr := getEnv("PREVIEW_ADDR", "127.0.0.1:8989")
-	srv := &http.Server{Addr: addr, Handler: http.FileServer(http.Dir(dir))}
+	srv := &http.Server{Addr: addr, Handler: http.FileServer(http.Dir(dir)), ReadHeaderTimeout: 10 * time.Second}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()

@@ -5,16 +5,29 @@ run:
 
 linters:
   enable:
+    - bodyclose
+    - copyloopvar
+    - dupword
+    - durationcheck
     - errcheck
+    - errorlint
+    - exhaustive
     - gocritic
     - gocyclo
     - govet
     - ineffassign
+    - intrange
     - misspell
+    - nakedret
+    - nilerr
+    - nilnil
     - nolintlint
     - prealloc
     - staticcheck
+    - unconvert
     - unused
+    - wastedassign
+    - whitespace
   settings:
     gocyclo:
       min-complexity: 15
