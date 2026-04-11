@@ -6,6 +6,7 @@ Extracts CRD JSON schemas from a Kubernetes cluster and publishes them to a Clou
 
 - Extracts OpenAPI v3 schemas from all CustomResourceDefinitions in a cluster
 - Converts to standard JSON Schema (ports [openapi2jsonschema.py](https://github.com/yannh/kubeconform/blob/master/scripts/openapi2jsonschema.py) transforms)
+- Renders interactive HTML documentation pages for each schema with collapsible property trees, type badges, and constraints
 - Generates a browsable HTML index page with search, dark/light mode, and visual effects inspired by the Scalar deepspace theme
 - Uploads directly to Cloudflare Pages using the direct upload API
 - Creates the CF Pages project automatically if it doesn't exist
@@ -40,6 +41,7 @@ Commands:
 | `LEASE_NAME` | No | `crd-schema-publisher` | Name of the Lease resource (watch mode) |
 | `HEALTH_PORT` | No | `8080` | Port for liveness/readiness probes (watch mode) |
 | `PREVIEW_ADDR` | No | `127.0.0.1:8989` | Listen address for preview server (preview mode) |
+| `SKIP_RENDER` | No | — | Set to `true` to skip HTML schema page rendering |
 
 ### Run in Kubernetes
 
@@ -117,10 +119,12 @@ docker buildx build --platform linux/amd64,linux/arm64 -t crd-schema-publisher .
 ```
 <output-dir>/
   <apigroup>/
-    <kind>_<version>.json          # Primary format
+    <kind>_<version>.json          # JSON schema
+    <kind>_<version>.html          # Interactive documentation page
   master-standalone/
     <apigroup>-<kind>-stable-<version>.json  # kubeval-compatible format
   index.html                       # Browsable schema index
+  favicon.svg                      # Constellation icon
 ```
 
 ## How It Works
@@ -132,8 +136,9 @@ docker buildx build --platform linux/amd64,linux/arm64 -t crd-schema-publisher .
    - Replaces `int-or-string` format with `oneOf [string, integer]`
    - Allows null for optional fields
 4. Writes schemas to both primary and kubeval-compatible directory formats
-5. Generates an HTML index grouped by API group with client-side search, stats, and yaml-language-server usage examples
-6. Uploads to Cloudflare Pages via the direct upload API (BLAKE3 content hashing, batched uploads with retry)
+5. Renders an interactive HTML documentation page for each schema with collapsible property trees
+6. Generates an HTML index grouped by API group with client-side search, stats, and yaml-language-server usage examples
+7. Uploads to Cloudflare Pages via the direct upload API (BLAKE3 content hashing, batched uploads with retry)
 
 ## License
 

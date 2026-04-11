@@ -12,6 +12,8 @@ converter/      OpenAPI v3 -> JSON Schema transforms (ported from openapi2jsonsc
 extractor/      client-go CRD listing, schema extraction, file writing, config builder
 index/          HTML index generation (deepspace theme, client-side search, starfield/flare effects)
 publisher/      Cloudflare Pages direct upload API client + BLAKE3 hashing
+renderer/       HTML schema page renderer (collapsible property trees, type badges, constraints)
+theme/          Shared CSS/HTML/JS constants (deepspace theme, starfield, flare, toggle, toast, footer)
 watcher/        CRD informer watch loop, debounce, leader election, health server
 ```
 
@@ -59,6 +61,7 @@ go run ./cmd/ preview
 | `POD_NAMESPACE` | Yes (watch) | — | Namespace for leader lease (set via downward API) |
 | `LEASE_NAME` | No | `crd-schema-publisher` | Name of the Lease resource (watch mode) |
 | `HEALTH_PORT` | No | `8080` | Port for liveness/readiness probes (watch mode) |
+| `SKIP_RENDER` | No | — | Set to `true` to skip HTML schema page rendering |
 | `PREVIEW_ADDR` | No | `127.0.0.1:8989` | Listen address (preview mode) |
 
 ### Key Design Decisions
@@ -67,8 +70,10 @@ go run ./cmd/ preview
 - **Cloudflare Pages direct upload API** is undocumented. Implementation reverse-engineered from wrangler source (`cloudflare/workers-sdk`). The upload flow uses JWT auth for asset operations and API token auth for deployment creation. See `publisher/publisher.go` for the full 6-step flow.
 - **BLAKE3 file hashing** exactly matches wrangler's `hashFile`: `hex(blake3(base64(content) + extension))[0:32]`. Do not change this algorithm without verifying against wrangler source.
 - **OpenAPI v3 to JSON Schema conversion** is a faithful port of `openapi2jsonschema.py` from datreeio/CRDs-catalog. Three transforms applied in order: additionalProperties, replaceIntOrString, allowNullOptionalFields.
-- **Output format** produces two directory structures: `<group>/<kind>_<version>.json` (primary) and `master-standalone/<group>-<kind>-stable-<version>.json` (kubeval compatibility).
-- **Concurrency**: extractor uses 10 goroutines (buffered channel semaphore), publisher uses 3 concurrent upload workers. These match the original tools' behavior.
+- **Schema renderer** generates interactive HTML documentation pages (collapsible `<details>`/`<summary>` property trees, type/required badges, YAML boilerplate). Uses `html/template` with recursive `{{define "properties"}}` for nested schemas. Enabled by default; disable with `SKIP_RENDER=true`.
+- **Theme package** (`theme/`) holds shared CSS, HTML fragments, and JS used by both index and renderer templates. CSS custom properties are the union of both pages' needs. The deepspace theme (starfield, flare, light/dark toggle) is defined once here.
+- **Output format** produces two directory structures: `<group>/<kind>_<version>.json` (primary) and `master-standalone/<group>-<kind>-stable-<version>.json` (kubeval compatibility). Each JSON schema also gets a sibling `.html` documentation page.
+- **Concurrency**: extractor uses 10 goroutines (buffered channel semaphore), publisher uses 3 concurrent upload workers, renderer uses 10 goroutines. These match the original tools' behavior.
 - **Watch mode uses full re-extract.** Simpler than incremental. Upload is already incremental via check-missing. Extraction of <200 CRDs is sub-second.
 - **Leader election uses standard client-go leaderelection.** LeaseLock with 15s/10s/2s timings. Leader exits on lease loss (standard controller pattern).
 - **All replicas report ready.** Readiness is not gated on leadership. Standard controller pattern — leadership is an internal concern.
@@ -99,5 +104,6 @@ Kubernetes manifests live in the `home-ops` repo under `apps/kubernetes-schemas/
 - Adding CGO dependencies — breaks static compilation and distroless compatibility
 - Modifying the CF Pages upload flow without checking current wrangler source — the API is undocumented and may change
 - Forgetting to update both output directory formats (primary + master-standalone) when changing schema file naming
+- When modifying shared CSS or HTML fragments, edit `theme/theme.go` — do not duplicate changes across `index/index.go` and `renderer/renderer.go`
 - The index template uses a deepspace-inspired theme (starfield via coprime-tiled radial gradients, light flare via stripe/rainbow interference). Both effects are pure CSS, dark-mode only, hidden in light mode via `.light body::before, .light .flare { display: none }` (`.light` class is on `<html>`, set in a `<head>` script to prevent FOUC)
 - The flare uses `filter: opacity(50%)` AND `opacity: 0.25` intentionally — these multiply to ~12.5% effective opacity. Do not "simplify" by removing one.
