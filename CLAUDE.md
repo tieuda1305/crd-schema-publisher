@@ -26,6 +26,12 @@ go test ./...
 # Vet
 go vet ./...
 
+# Lint (requires golangci-lint)
+golangci-lint run
+
+# Enable pre-commit hook
+git config core.hooksPath .githooks
+
 # Cross-compile (matches CI targets)
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o crd-schema-publisher ./cmd/
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o crd-schema-publisher ./cmd/
@@ -77,6 +83,9 @@ go run ./cmd/ preview
 - **Watch mode uses full re-extract.** Simpler than incremental. Upload is already incremental via check-missing. Extraction of <200 CRDs is sub-second.
 - **Leader election uses standard client-go leaderelection.** LeaseLock with 15s/10s/2s timings. Leader exits on lease loss (standard controller pattern).
 - **All replicas report ready.** Readiness is not gated on leadership. Standard controller pattern — leadership is an internal concern.
+- **Linting** uses golangci-lint with strict linters (gocritic, gocyclo, misspell, prealloc, nolintlint) plus defaults. Config in `.golangci.yml`. Pre-commit hook in `.githooks/pre-commit`.
+- **Image signing** uses cosign keyless mode via GitHub OIDC. Production images on main are signed; PR images are not. Base images (golang, distroless) are verified before every build.
+- **Supply chain hardening**: all GitHub Actions pinned by commit SHA (not version tag), Dockerfile base images pinned by digest, `go mod verify` runs in CI.
 
 ### Dependencies (direct only)
 
@@ -107,3 +116,5 @@ Kubernetes manifests live in the `home-ops` repo under `apps/kubernetes-schemas/
 - When modifying shared CSS or HTML fragments, edit `theme/theme.go` — do not duplicate changes across `index/index.go` and `renderer/renderer.go`
 - The index template uses a deepspace-inspired theme (starfield via coprime-tiled radial gradients, light flare via stripe/rainbow interference). Both effects are pure CSS, dark-mode only, hidden in light mode via `.light body::before, .light .flare { display: none }` (`.light` class is on `<html>`, set in a `<head>` script to prevent FOUC)
 - The flare uses `filter: opacity(50%)` AND `opacity: 0.25` intentionally — these multiply to ~12.5% effective opacity. Do not "simplify" by removing one.
+- When updating GitHub Actions, always pin by commit SHA with a version comment (e.g., `actions/checkout@<sha> # v4`). Never use floating version tags.
+- When upgrading Go or distroless base images, update the digest in `Dockerfile` and verify the new digest with `cosign verify` before committing.
