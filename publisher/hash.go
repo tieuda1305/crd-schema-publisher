@@ -21,7 +21,7 @@ func HashFile(path string) (string, error) {
 	b64 := base64.StdEncoding.EncodeToString(content)
 	ext := strings.TrimPrefix(filepath.Ext(path), ".")
 	hasher := blake3.New()
-	hasher.WriteString(b64 + ext)
+	_, _ = hasher.WriteString(b64 + ext)
 	sum := hasher.Sum(nil)
 	return hex.EncodeToString(sum)[:32], nil
 }

@@ -1,3 +1,5 @@
+version: "2"
+
 run:
   timeout: 5m
 
@@ -6,14 +8,12 @@ linters:
     - errcheck
     - gocritic
     - gocyclo
-    - gosimple
     - govet
     - ineffassign
     - misspell
     - nolintlint
     - prealloc
     - staticcheck
-    - typecheck
     - unused
 
 linters-settings:
@@ -25,9 +25,14 @@ linters-settings:
   errcheck:
     check-type-assertions: true
 
-issues:
-  exclude-rules:
-    - path: _test\.go
+exclusions:
+  presets:
+    - std-error-handling
+  rules:
+    - path: ".*_test\\.go"
       linters:
         - gocyclo
+        - errcheck
+    - path: "_test\\.go"
+      linters:
         - errcheck

@@ -187,9 +187,12 @@ func renderSchemaFile(tmpl *template.Template, jsonPath, group, filename string)
 	if err != nil {
 		return fmt.Errorf("creating %s: %w", htmlPath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
-	return tmpl.Execute(f, pageData)
+	if err := tmpl.Execute(f, pageData); err != nil {
+		return err
+	}
+	return f.Close()
 }
 
 // RenderAll walks the output directory and generates an HTML page for each JSON schema.

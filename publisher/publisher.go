@@ -143,7 +143,7 @@ func (p *Publisher) ensureProject() error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var cr cfResponse
 	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
 		return fmt.Errorf("decoding response: %w", err)
@@ -168,7 +168,7 @@ func (p *Publisher) ensureProject() error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
 		return fmt.Errorf("decoding response: %w", err)
 	}
@@ -213,7 +213,7 @@ func (p *Publisher) getUploadToken() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var cr cfResponse
 	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
 		return "", fmt.Errorf("decoding response: %w", err)
@@ -249,7 +249,7 @@ func (p *Publisher) checkMissing(jwt string, hashes []string) ([]string, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var cr cfResponse
 	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
 		return nil, fmt.Errorf("decoding response: %w", err)
@@ -349,12 +349,12 @@ func (p *Publisher) uploadBucket(jwt string, files []*fileEntry) error {
 		}
 		var cr cfResponse
 		if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			lastErr = fmt.Errorf("decoding response: %w", err)
 			time.Sleep(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
 			continue
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if cr.Success {
 			return nil
 		}
@@ -384,7 +384,7 @@ func (p *Publisher) upsertHashes(jwt string, hashes []string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var cr cfResponse
 	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
 		return fmt.Errorf("decoding response: %w", err)
@@ -408,8 +408,8 @@ func (p *Publisher) createDeployment(manifest map[string]string) (string, error)
 		if err != nil {
 			return "", err
 		}
-		part.Write(manifestJSON)
-		writer.Close()
+		_, _ = part.Write(manifestJSON)
+		_ = writer.Close()
 		url := fmt.Sprintf("%s/accounts/%s/pages/projects/%s/deployments", p.baseURL(), p.AccountID, p.ProjectName)
 		req, err := http.NewRequest("POST", url, &body)
 		if err != nil {
@@ -424,7 +424,7 @@ func (p *Publisher) createDeployment(manifest map[string]string) (string, error)
 			continue
 		}
 		respBody, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		var cr cfResponse
 		if err := json.Unmarshal(respBody, &cr); err != nil {
 			lastErr = fmt.Errorf("decoding response: %w", err)

@@ -17,21 +17,21 @@ func TestPublish_FullFlow(t *testing.T) {
 		calls = append(calls, r.Method+" "+r.URL.Path)
 		switch {
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/projects/test-project"):
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": map[string]interface{}{"name": "test-project"}})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": map[string]interface{}{"name": "test-project"}})
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/upload-token"):
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": map[string]interface{}{"jwt": "fake-jwt-token"}})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": map[string]interface{}{"jwt": "fake-jwt-token"}})
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/check-missing"):
 			var body struct {
 				Hashes []string `json:"hashes"`
 			}
-			json.NewDecoder(r.Body).Decode(&body)
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": body.Hashes})
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": body.Hashes})
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/upload"):
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": nil})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": nil})
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/upsert-hashes"):
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": nil})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": nil})
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/deployments"):
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": map[string]interface{}{"id": "deploy-123", "url": "https://test-project.pages.dev"}})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": map[string]interface{}{"id": "deploy-123", "url": "https://test-project.pages.dev"}})
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(404)
@@ -40,9 +40,9 @@ func TestPublish_FullFlow(t *testing.T) {
 	defer server.Close()
 
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "example.io", "test_v1.json"), []byte(`{"type":"object"}`), 0o644)
-	os.WriteFile(filepath.Join(tmpDir, "index.html"), []byte(`<html></html>`), 0o644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "example.io", "test_v1.json"), []byte(`{"type":"object"}`), 0o644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "index.html"), []byte(`<html></html>`), 0o644)
 
 	p := &Publisher{
 		APIToken: "fake-token", AccountID: "fake-account", ProjectName: "test-project",
@@ -67,27 +67,27 @@ func TestPublish_CreatesProjectIfMissing(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/projects/new-project"):
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "errors": []interface{}{map[string]interface{}{"code": 8000007}}})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "errors": []interface{}{map[string]interface{}{"code": 8000007}}})
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/projects") && !strings.Contains(r.URL.Path, "deployments"):
 			projectCreated = true
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": map[string]interface{}{"name": "new-project"}})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": map[string]interface{}{"name": "new-project"}})
 		case strings.HasSuffix(r.URL.Path, "/upload-token"):
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": map[string]interface{}{"jwt": "fake-jwt"}})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": map[string]interface{}{"jwt": "fake-jwt"}})
 		case strings.HasSuffix(r.URL.Path, "/check-missing"):
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": []string{}})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": []string{}})
 		case strings.HasSuffix(r.URL.Path, "/upsert-hashes"):
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": nil})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": nil})
 		case strings.HasSuffix(r.URL.Path, "/deployments"):
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": map[string]interface{}{"id": "d1", "url": "https://new-project.pages.dev"}})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": map[string]interface{}{"id": "d1", "url": "https://new-project.pages.dev"}})
 		default:
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": nil})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": nil})
 		}
 	}))
 	defer server.Close()
 
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "example.io", "test_v1.json"), []byte(`{}`), 0o644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "example.io", "test_v1.json"), []byte(`{}`), 0o644)
 
 	p := &Publisher{
 		APIToken: "fake-token", AccountID: "fake-account", ProjectName: "new-project",

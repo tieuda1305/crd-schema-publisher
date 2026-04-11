@@ -492,12 +492,15 @@ func Generate(outputDir string) error {
 	if err != nil {
 		return fmt.Errorf("creating index.html: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
-	return tmpl.Execute(f, indexData{
+	if err := tmpl.Execute(f, indexData{
 		Groups:     sortedGroups,
 		GroupCount: len(sortedGroups),
 		TotalCount: totalCount,
 		UpdatedAt:  time.Now().UTC().Format("2006-01-02 15:04 UTC"),
-	})
+	}); err != nil {
+		return err
+	}
+	return f.Close()
 }

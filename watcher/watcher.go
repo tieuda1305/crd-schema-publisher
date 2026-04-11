@@ -135,7 +135,11 @@ func runLeader(ctx context.Context, cfg Config) {
 		DeleteFunc: func(obj interface{}) { signalTrigger(trigger) },
 	}
 
-	_, controller := cache.NewInformer(lw, &apiextensionsv1.CustomResourceDefinition{}, 0, notify)
+	_, controller := cache.NewInformerWithOptions(cache.InformerOptions{
+		ListerWatcher: lw,
+		ObjectType:    &apiextensionsv1.CustomResourceDefinition{},
+		Handler:       notify,
+	})
 
 	go controller.Run(ctx.Done())
 	if !cache.WaitForCacheSync(ctx.Done(), controller.HasSynced) {
@@ -283,15 +287,15 @@ func startHealthServer(port string, ready *atomic.Bool) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	})
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		if ready.Load() {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("ok"))
+			_, _ = w.Write([]byte("ok"))
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte("not ready"))
+			_, _ = w.Write([]byte("not ready"))
 		}
 	})
 	server := &http.Server{Addr: ":" + port, Handler: mux}
