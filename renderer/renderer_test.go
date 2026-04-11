@@ -427,6 +427,68 @@ func TestRenderSchema_MinimalSchema(t *testing.T) {
 	}
 }
 
+func TestRenderAll_CreatesHTMLFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tmpDir, "cert-manager.io"), 0o755)
+	os.WriteFile(filepath.Join(tmpDir, "cert-manager.io", "certificate_v1.json"),
+		[]byte(`{"type":"object","properties":{"spec":{"type":"object"}}}`), 0o644)
+	os.WriteFile(filepath.Join(tmpDir, "cert-manager.io", "issuer_v1.json"),
+		[]byte(`{"type":"object"}`), 0o644)
+	os.MkdirAll(filepath.Join(tmpDir, "monitoring.coreos.com"), 0o755)
+	os.WriteFile(filepath.Join(tmpDir, "monitoring.coreos.com", "prometheus_v1.json"),
+		[]byte(`{"type":"object"}`), 0o644)
+	os.MkdirAll(filepath.Join(tmpDir, "master-standalone"), 0o755)
+	os.WriteFile(filepath.Join(tmpDir, "master-standalone", "test.json"),
+		[]byte(`{"type":"object"}`), 0o644)
+
+	err := RenderAll(tmpDir)
+	if err != nil {
+		t.Fatalf("RenderAll error: %v", err)
+	}
+
+	for _, path := range []string{
+		"cert-manager.io/certificate_v1.html",
+		"cert-manager.io/issuer_v1.html",
+		"monitoring.coreos.com/prometheus_v1.html",
+	} {
+		if _, err := os.Stat(filepath.Join(tmpDir, path)); err != nil {
+			t.Errorf("expected %s to exist: %v", path, err)
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join(tmpDir, "master-standalone", "test.html")); err == nil {
+		t.Error("master-standalone should not get HTML files")
+	}
+}
+
+func TestRenderAll_SkipsNonJsonFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
+	os.WriteFile(filepath.Join(tmpDir, "example.io", "thing_v1.json"), []byte(`{"type":"object"}`), 0o644)
+	os.WriteFile(filepath.Join(tmpDir, "example.io", "README.md"), []byte(`# hello`), 0o644)
+
+	err := RenderAll(tmpDir)
+	if err != nil {
+		t.Fatalf("RenderAll error: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(tmpDir, "example.io", "thing_v1.html")); err != nil {
+		t.Error("JSON schema should get HTML")
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "example.io", "README.html")); err == nil {
+		t.Error("non-JSON file should not get HTML")
+	}
+}
+
+func TestRenderAll_EmptyDir(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	err := RenderAll(tmpDir)
+	if err != nil {
+		t.Fatalf("RenderAll should handle empty dir: %v", err)
+	}
+}
+
 func TestRenderSchema_DeepNesting(t *testing.T) {
 	schema := `{
 		"type": "object",

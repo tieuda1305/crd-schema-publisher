@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -206,6 +207,37 @@ func renderSchemaFile(jsonPath, group, filename string) error {
 	defer f.Close()
 
 	return tmpl.Execute(f, pageData)
+}
+
+// RenderAll walks the output directory and generates an HTML page for each JSON schema.
+// Skips the master-standalone directory and non-JSON files.
+func RenderAll(outputDir string) error {
+	entries, err := os.ReadDir(outputDir)
+	if err != nil {
+		return fmt.Errorf("reading output dir: %w", err)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name() == "master-standalone" {
+			continue
+		}
+		groupName := entry.Name()
+		groupDir := filepath.Join(outputDir, groupName)
+		files, err := os.ReadDir(groupDir)
+		if err != nil {
+			return fmt.Errorf("reading group dir %s: %w", groupName, err)
+		}
+		for _, f := range files {
+			if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") {
+				continue
+			}
+			jsonPath := filepath.Join(groupDir, f.Name())
+			if err := renderSchemaFile(jsonPath, groupName, f.Name()); err != nil {
+				return fmt.Errorf("rendering %s/%s: %w", groupName, f.Name(), err)
+			}
+		}
+	}
+	return nil
 }
 
 const schemaTemplate = `<!DOCTYPE html>
