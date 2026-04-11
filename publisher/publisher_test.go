@@ -11,10 +11,10 @@ import (
 	"testing"
 )
 
-func TestPublish_FullFlow(t *testing.T) {
-	var calls []string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls = append(calls, r.Method+" "+r.URL.Path)
+func fullFlowHandler(t *testing.T, calls *[]string) http.Handler {
+	t.Helper()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		*calls = append(*calls, r.Method+" "+r.URL.Path)
 		switch {
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/projects/test-project"):
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": map[string]interface{}{"name": "test-project"}})
@@ -36,7 +36,12 @@ func TestPublish_FullFlow(t *testing.T) {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(404)
 		}
-	}))
+	})
+}
+
+func TestPublish_FullFlow(t *testing.T) {
+	var calls []string
+	server := httptest.NewServer(fullFlowHandler(t, &calls))
 	defer server.Close()
 
 	tmpDir := t.TempDir()
