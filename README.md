@@ -1,3 +1,7 @@
+[![Go Report Card](https://goreportcard.com/badge/github.com/sholdee/crd-schema-publisher)](https://goreportcard.com/report/github.com/sholdee/crd-schema-publisher)
+[![CI](https://github.com/sholdee/crd-schema-publisher/actions/workflows/build.yaml/badge.svg)](https://github.com/sholdee/crd-schema-publisher/actions/workflows/build.yaml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 # crd-schema-publisher
 
 Extracts CRD JSON schemas from a Kubernetes cluster and publishes them to a Cloudflare Pages website. Runs as a Kubernetes Deployment (watch mode) or CronJob in a distroless nonroot container.
@@ -139,6 +143,40 @@ docker buildx build --platform linux/amd64,linux/arm64 -t crd-schema-publisher .
 5. Renders an interactive HTML documentation page for each schema with collapsible property trees
 6. Generates an HTML index grouped by API group with client-side search, stats, and yaml-language-server usage examples
 7. Uploads to Cloudflare Pages via the direct upload API (BLAKE3 content hashing, batched uploads with retry)
+
+## Development
+
+### Linting
+
+This project uses [golangci-lint](https://golangci-lint.run/) with strict linters enabled. Install it:
+
+```bash
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+```
+
+Run manually:
+
+```bash
+golangci-lint run
+```
+
+### Pre-Commit Hook
+
+Enable the pre-commit hook to enforce linting before each commit:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+### Image Verification
+
+Production images are signed with [cosign](https://docs.sigstore.dev/cosign/overview/) keyless signing via GitHub Actions OIDC. Verify any image:
+
+```bash
+cosign verify ghcr.io/sholdee/crd-schema-publisher:latest \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp github.com/sholdee/crd-schema-publisher
+```
 
 ## License
 
