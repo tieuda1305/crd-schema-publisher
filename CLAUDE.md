@@ -105,15 +105,15 @@ Single workflow triggered on PRs to `main` and pushes to `main`, with seven cond
 
 | Job | Runs when | Purpose |
 | --- | --------- | ------- |
-| `detect` | Always | `dorny/paths-filter` classifies changes: `app` (Go, go.mod/sum, Dockerfile), `ci` (workflow, golangci config), `renovate` (config only). Derives `code = app \|\| ci`. |
+| `detect` | Always | `dorny/paths-filter` classifies changes: `app` (Go, go.mod/sum, Dockerfile), `renovate` (config only). |
 | `test` | Always (safety net — ensures Go code compiles on every PR, even docs-only) | actionlint, markdownlint-cli2, golangci-lint, go mod verify/tidy, go test, go vet |
-| `build` | `code == true` | Multi-arch Docker build (amd64 + arm64), pushes to GHCR. PR: `pr-N` tag. Main: `vYYYY.MMDD.HHMMSS` + `latest`. Verifies distroless base image digest with cosign before building. |
+| `build` | `app == true` | Multi-arch Docker build (amd64 + arm64), pushes to GHCR. PR: `pr-N` tag. Main: `vYYYY.MMDD.HHMMSS` + `latest`. Verifies distroless base image digest with cosign before building. |
 | `sign` | Push to main | Cosign keyless signing via GitHub OIDC |
 | `release` | Push to main + `app == true` | Creates git tag, GitHub Release with auto-generated notes and image digest |
 | `renovate` | `renovate == true` | Validates `.github/renovate.json5` with `renovate-config-validator --strict` |
 | `gate` | Always | Evaluates all job results — only `success` and `skipped` pass. Single required status check for branch protection. |
 
-Build and release only trigger on application-affecting changes. CI-only changes (e.g., bumping an action SHA) build to verify but do not create releases.
+Build, sign, and release only trigger on application-affecting changes (`app` filter). CI-only changes (e.g., bumping an action SHA, updating linter config) run tests but do not build images.
 
 ### Tags
 
