@@ -4,6 +4,7 @@
 .claude
 .golangci.yml
 .gitignore
+.markdownlint-cli2.yaml
 deploy
 output
 CLAUDE.md

@@ -19,7 +19,7 @@ Extracts CRD JSON schemas from a Kubernetes cluster and publishes them to a Clou
 
 ## Usage
 
-```
+```text
 crd-schema-publisher [command]
 
 Commands:
@@ -64,6 +64,7 @@ kubectl apply -f deploy/common.yaml -f deploy/cronjob.yaml
 ```
 
 Both modes include:
+
 - Namespace, ServiceAccount, RBAC (ClusterRole for CRD read access)
 - Secret placeholder for Cloudflare credentials
 - Hardened security context (nonroot, read-only rootfs, dropped capabilities)
@@ -99,7 +100,7 @@ KUBECTL_CONTEXT=my-cluster \
 
 Pre-built multi-arch images (amd64 + arm64) are published to GHCR on every push to `main`:
 
-```
+```text
 ghcr.io/sholdee/crd-schema-publisher:latest
 ```
 
@@ -132,7 +133,7 @@ docker buildx build --platform linux/amd64,linux/arm64 -t crd-schema-publisher .
 
 ## Output Structure
 
-```
+```text
 <output-dir>/
   <apigroup>/
     <kind>_<version>.json          # JSON schema
