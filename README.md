@@ -33,7 +33,7 @@ Commands:
 ### Environment Variables
 
 | Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
+| -------- | -------- | ------- | ----------- |
 | `CLOUDFLARE_API_TOKEN` | Yes (run/upload) | — | Cloudflare API token with Pages permissions |
 | `CLOUDFLARE_ACCOUNT_ID` | Yes (run/upload) | — | Cloudflare account ID |
 | `CF_PAGES_PROJECT` | No | `kubernetes-schemas` | Cloudflare Pages project name |

@@ -4,7 +4,7 @@
 
 Please use GitHub's private vulnerability reporting feature to report security issues:
 
-**Repository > Security tab > Advisories > Report a vulnerability**
+Repository > Security tab > Advisories > Report a vulnerability
 
 This is the preferred channel. Do not open public issues for security vulnerabilities.
 

@@ -56,7 +56,7 @@ go run ./cmd/ preview
 ### Configuration (env vars)
 
 | Var | Required | Default | Purpose |
-|-----|----------|---------|---------|
+| --- | -------- | ------- | ------- |
 | `CLOUDFLARE_API_TOKEN` | Yes (run/upload) | — | CF API token |
 | `CLOUDFLARE_ACCOUNT_ID` | Yes (run/upload) | — | CF account ID |
 | `CF_PAGES_PROJECT` | No | `kubernetes-schemas` | CF Pages project name |
@@ -90,7 +90,7 @@ go run ./cmd/ preview
 ### Dependencies (direct only)
 
 | Dependency | Purpose |
-|-----------|---------|
+| --------- | ------- |
 | `k8s.io/client-go` | Kubernetes API access |
 | `k8s.io/apiextensions-apiserver` | CRD typed client |
 | `github.com/zeebo/blake3` | BLAKE3 hashing (pure Go) |
@@ -104,7 +104,7 @@ No other external dependencies. Standard library for HTTP, JSON, HTML templates,
 Single workflow triggered on PRs to `main` and pushes to `main`, with seven conditional jobs:
 
 | Job | Runs when | Purpose |
-|-----|-----------|---------|
+| --- | --------- | ------- |
 | `detect` | Always | `dorny/paths-filter` classifies changes: `app` (Go, go.mod/sum, Dockerfile), `ci` (workflow, golangci config), `renovate` (config only). Derives `code = app \|\| ci`. |
 | `test` | Always | actionlint, golangci-lint, go mod verify/tidy, go test, go vet |
 | `build` | `code == true` | Multi-arch Docker build (amd64 + arm64), pushes to GHCR. PR: `pr-N` tag. Main: `vYYYY.MMDD.HHMMSS` + `latest`. Verifies distroless base image digest with cosign before building. |
@@ -132,7 +132,7 @@ Automated dependency management with platform automerge.
 ### Dependency Pinning
 
 | Dependency type | Pinning strategy | Example |
-|----------------|-----------------|---------|
+| -------------- | --------------- | ------- |
 | GitHub Actions | Commit SHA + version comment | `actions/checkout@<sha> # v4` |
 | Dockerfile base images | Tag + manifest digest | `golang:1.26.2@sha256:...` |
 | Go modules | `go.mod` + `go.sum`, verified with `go mod verify` | Standard |
