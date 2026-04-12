@@ -6,10 +6,23 @@
 
 Extracts CRD JSON schemas from a Kubernetes cluster and publishes them to a Cloudflare Pages website. Runs as a Kubernetes Deployment (watch mode) or CronJob in a distroless nonroot container.
 
+## Why
+
+Most CRD schema solutions rely on static catalogs — community-maintained repositories that scrape schemas from popular Helm charts. Schemas go stale, internal CRDs are missing, and your validation pipeline depends on third-party infrastructure.
+
+This tool reads schemas directly from your cluster's API server and publishes them to infrastructure you control.
+
+- **Always accurate** — schemas reflect exactly what's installed in your cluster, including custom and internal CRDs, updated automatically when CRDs change
+- **Self-hosted** — published to your own Cloudflare Pages site, removing third-party dependencies from your validation pipeline
+- **Single static binary** — no runtime dependencies, no interpreters, no package managers. One binary in a distroless nonroot container with no shell
+- **Kubernetes-native** — watch mode uses the controller pattern with informers, leader election, debounced publish cycles, and health probes. It's a proper workload, not a script on a timer
+
+The JSON Schema conversion improves on the widely-used [openapi2jsonschema.py](https://github.com/yannh/kubeconform/blob/master/scripts/openapi2jsonschema.py) transforms with three correctness fixes: per-field nullable precision (rather than per-parent), preservation of existing schema keys during int-or-string replacement, and suppression of nonsensical nullable on root objects and array items. A frozen golden test locks this output to prevent regressions.
+
 ## Features
 
 - Extracts OpenAPI v3 schemas from all CustomResourceDefinitions in a cluster
-- Converts to standard JSON Schema (ports [openapi2jsonschema.py](https://github.com/yannh/kubeconform/blob/master/scripts/openapi2jsonschema.py) transforms)
+- Converts to standard JSON Schema with improved transforms over [openapi2jsonschema.py](https://github.com/yannh/kubeconform/blob/master/scripts/openapi2jsonschema.py)
 - Renders interactive HTML documentation pages for each schema with collapsible property trees, type badges, and constraints
 - Generates a browsable HTML index page with search, dark/light mode, and visual effects inspired by the Scalar deepspace theme
 - Uploads directly to Cloudflare Pages using the direct upload API
@@ -148,10 +161,10 @@ docker buildx build --platform linux/amd64,linux/arm64 -t crd-schema-publisher .
 
 1. Connects to the Kubernetes API (in-cluster or via kubeconfig)
 2. Lists all CRDs and extracts `.spec.versions[].schema.openAPIV3Schema`
-3. Applies three JSON Schema transforms (matching [openapi2jsonschema.py](https://github.com/yannh/kubeconform/blob/master/scripts/openapi2jsonschema.py)):
+3. Applies three JSON Schema transforms (improved from [openapi2jsonschema.py](https://github.com/yannh/kubeconform/blob/master/scripts/openapi2jsonschema.py)):
    - Adds `additionalProperties: false` to objects with `properties`
-   - Replaces `int-or-string` format with `oneOf [string, integer]`
-   - Allows null for optional fields
+   - Replaces `int-or-string` format with `oneOf [string, integer]` while preserving existing keys
+   - Allows null for optional fields (per-field precision, not per-parent)
 4. Writes schemas to both primary and kubeval-compatible directory formats
 5. Renders an interactive HTML documentation page for each schema with collapsible property trees
 6. Generates an HTML index grouped by API group with client-side search, stats, and yaml-language-server usage examples
