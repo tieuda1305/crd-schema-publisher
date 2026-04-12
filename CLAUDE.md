@@ -106,7 +106,7 @@ Single workflow triggered on PRs to `main` and pushes to `main`, with seven cond
 | Job | Runs when | Purpose |
 | --- | --------- | ------- |
 | `detect` | Always | `dorny/paths-filter` classifies changes: `app` (Go, go.mod/sum, Dockerfile), `ci` (workflow, golangci config), `renovate` (config only). Derives `code = app \|\| ci`. |
-| `test` | Always | actionlint, golangci-lint, go mod verify/tidy, go test, go vet |
+| `test` | Always (safety net — ensures Go code compiles on every PR, even docs-only) | actionlint, markdownlint-cli2, golangci-lint, go mod verify/tidy, go test, go vet |
 | `build` | `code == true` | Multi-arch Docker build (amd64 + arm64), pushes to GHCR. PR: `pr-N` tag. Main: `vYYYY.MMDD.HHMMSS` + `latest`. Verifies distroless base image digest with cosign before building. |
 | `sign` | Push to main | Cosign keyless signing via GitHub OIDC |
 | `release` | Push to main + `app == true` | Creates git tag, GitHub Release with auto-generated notes and image digest |

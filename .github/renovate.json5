@@ -28,7 +28,7 @@
     },
     {
       description: 'Automerge minor/patch CI tool updates',
-      matchPackageNames: ['rhysd/actionlint'],
+      matchPackageNames: ['rhysd/actionlint', 'markdownlint-cli2'],
       matchUpdateTypes: ['minor', 'patch'],
       automerge: true,
     },
@@ -43,6 +43,16 @@
       ],
       datasourceTemplate: 'github-releases',
       versioningTemplate: 'semver',
+    },
+    {
+      customType: 'regex',
+      description: ['Process npx tool versions in CI workflows'],
+      fileMatch: ['\\.github/workflows/.*\\.ya?ml$'],
+      matchStrings: [
+        'npx --yes (?<depName>[\\w-]+)@(?<currentValue>[\\d.]+)',
+      ],
+      datasourceTemplate: 'npm',
+      versioningTemplate: 'npm',
     },
   ],
 }
