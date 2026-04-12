@@ -3,7 +3,7 @@ package watcher
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -39,10 +39,19 @@ type Config struct {
 	LeaseName  string
 	PodName    string
 	HealthPort string
+	CRDLister  extractor.CRDLister // nil = derive from Client
 }
 
 // Run starts the watcher with leader election and health server.
 func Run(ctx context.Context, cfg Config) error {
+	slog.Info("watcher starting",
+		"namespace", cfg.Namespace,
+		"pod", cfg.PodName,
+		"lease", cfg.LeaseName,
+		"debounce", cfg.Debounce,
+		"health_port", cfg.HealthPort,
+		"publisher_configured", cfg.Publisher != nil,
+	)
 	// Start health server before leader election
 	healthReady := &atomic.Bool{}
 	healthServer := startHealthServer(cfg.HealthPort, healthReady)
@@ -78,7 +87,7 @@ func Run(ctx context.Context, cfg Config) error {
 		ReleaseOnCancel: true,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
-				log.Println("Acquired leadership, starting watch loop")
+				slog.Info("acquired leadership, starting watch loop")
 				runLeader(ctx, cfg)
 			},
 			OnStoppedLeading: func() {
@@ -86,15 +95,15 @@ func Run(ctx context.Context, cfg Config) error {
 				// On unexpected loss, exit immediately — standard controller pattern.
 				// On graceful shutdown, return normally so Run() can drain.
 				if ctx.Err() != nil {
-					log.Println("Leadership released during shutdown")
+					slog.Info("leadership released during shutdown")
 				} else {
-					log.Println("Lost leadership unexpectedly, exiting")
+					slog.Error("lost leadership unexpectedly, exiting")
 					os.Exit(1)
 				}
 			},
 			OnNewLeader: func(identity string) {
 				if identity != cfg.PodName {
-					log.Printf("New leader elected: %s", identity)
+					slog.Info("new leader elected", "identity", identity)
 				}
 			},
 		},
@@ -104,18 +113,18 @@ func Run(ctx context.Context, cfg Config) error {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 	if err := healthServer.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Health server shutdown error: %v", err)
+		slog.Error("health server shutdown error", "error", err)
 	}
 
-	log.Println("Shutdown complete")
+	slog.Info("shutdown complete")
 	return nil
 }
 
 func runLeader(ctx context.Context, cfg Config) {
 	// Initial publish on becoming leader
-	log.Println("Running initial publish cycle")
+	slog.Info("running initial publish cycle")
 	if err := publishCycle(cfg); err != nil {
-		log.Printf("Initial publish failed: %v", err)
+		slog.Error("initial publish failed", "error", err)
 	}
 
 	// Set up CRD informer
@@ -143,10 +152,10 @@ func runLeader(ctx context.Context, cfg Config) {
 
 	go controller.Run(ctx.Done())
 	if !cache.WaitForCacheSync(ctx.Done(), controller.HasSynced) {
-		log.Println("Failed to sync informer cache")
+		slog.Error("failed to sync informer cache")
 		return
 	}
-	log.Println("CRD informer synced, watching for changes")
+	slog.Info("CRD informer synced, watching for changes")
 
 	debounceLoop(trigger, cfg.Debounce, func() error {
 		return publishCycle(cfg)
@@ -187,7 +196,7 @@ func debounceLoop(trigger <-chan struct{}, duration time.Duration, publish func(
 			select {
 			case <-drained:
 			case <-time.After(drainTimeout):
-				log.Println("Drain timeout exceeded, abandoning in-flight publish")
+				slog.Warn("drain timeout exceeded, abandoning in-flight publish")
 			}
 			return
 		case <-trigger:
@@ -207,16 +216,16 @@ func debounceLoop(trigger <-chan struct{}, duration time.Duration, publish func(
 			timer = nil
 			timerC = nil
 			if !publishing.CompareAndSwap(false, true) {
-				log.Println("Publish already in progress, skipping")
+				slog.Warn("publish already in progress, skipping")
 				continue
 			}
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
 				defer publishing.Store(false)
-				log.Println("Debounce timer fired, running publish cycle")
+				slog.Info("debounce timer fired, running publish cycle")
 				if err := publish(); err != nil {
-					log.Printf("Publish cycle failed: %v", err)
+					slog.Error("publish cycle failed", "error", err)
 				}
 			}()
 		}
@@ -224,18 +233,25 @@ func debounceLoop(trigger <-chan struct{}, duration time.Duration, publish func(
 }
 
 func publishCycle(cfg Config) error {
+	start := time.Now()
 	// Clean output dir
 	if err := cleanDir(cfg.OutputDir); err != nil {
 		return fmt.Errorf("cleaning output dir: %w", err)
 	}
 
 	// Extract
-	crds, err := extractor.ListCRDs(cfg.Client)
+	var lister extractor.CRDLister
+	if cfg.CRDLister != nil {
+		lister = cfg.CRDLister
+	} else {
+		lister = cfg.Client.ApiextensionsV1().CustomResourceDefinitions()
+	}
+	crds, err := extractor.ListCRDs(lister)
 	if err != nil {
 		return fmt.Errorf("listing CRDs: %w", err)
 	}
 	if len(crds) == 0 {
-		log.Println("No CRDs found")
+		slog.Info("no CRDs found")
 		return nil
 	}
 
@@ -243,18 +259,20 @@ func publishCycle(cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("writing schemas: %w", err)
 	}
-	log.Printf("Wrote %d schemas", count)
+	slog.Info("wrote schemas", "count", count)
 
 	if os.Getenv("SKIP_RENDER") != "true" {
 		if err := renderer.RenderAll(cfg.OutputDir); err != nil {
 			return fmt.Errorf("rendering schemas: %w", err)
 		}
+		slog.Info("rendered schema pages")
 	}
 
 	// Generate index
 	if err := index.Generate(cfg.OutputDir); err != nil {
 		return fmt.Errorf("generating index: %w", err)
 	}
+	slog.Info("generated index")
 
 	// Upload (if publisher configured)
 	if cfg.Publisher != nil {
@@ -263,7 +281,7 @@ func publishCycle(cfg Config) error {
 		}
 	}
 
-	log.Println("Publish cycle complete")
+	slog.Info("publish cycle complete", "duration", time.Since(start).Round(time.Millisecond))
 	return nil
 }
 
@@ -301,7 +319,7 @@ func startHealthServer(port string, ready *atomic.Bool) *http.Server {
 	server := &http.Server{Addr: ":" + port, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("Health server error: %v", err)
+			slog.Error("health server error", "error", err)
 		}
 	}()
 	return server

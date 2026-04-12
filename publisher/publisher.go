@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"mime"
 	"mime/multipart"
@@ -33,6 +34,14 @@ type Publisher struct {
 	BaseURL     string
 	AssetsURL   string
 	HTTPClient  *http.Client
+	SleepFunc   func(time.Duration)
+}
+
+func (p *Publisher) sleepFunc() func(time.Duration) {
+	if p.SleepFunc != nil {
+		return p.SleepFunc
+	}
+	return time.Sleep
 }
 
 type fileEntry struct {
@@ -81,7 +90,7 @@ func (p *Publisher) Publish(dir string) error {
 	if len(files) == 0 {
 		return fmt.Errorf("no files found in %s", dir)
 	}
-	fmt.Printf("Collected %d files for upload\n", len(files))
+	slog.Info("collected files", "count", len(files))
 
 	jwt, err := p.getUploadToken()
 	if err != nil {
@@ -102,7 +111,7 @@ func (p *Publisher) Publish(dir string) error {
 	if err != nil {
 		return fmt.Errorf("checking missing: %w", err)
 	}
-	fmt.Printf("Uploading %d new files (%d already cached)\n", len(missing), len(uniqueHashes)-len(missing))
+	slog.Info("uploading files", "new", len(missing), "cached", len(uniqueHashes)-len(missing))
 
 	if len(missing) > 0 {
 		var toUpload []*fileEntry
@@ -128,7 +137,7 @@ func (p *Publisher) Publish(dir string) error {
 	if err != nil {
 		return fmt.Errorf("creating deployment: %w", err)
 	}
-	fmt.Printf("Deployment successful: %s\n", url)
+	slog.Info("deployment successful", "url", url)
 	return nil
 }
 
@@ -152,7 +161,7 @@ func (p *Publisher) ensureProject() error {
 		return nil
 	}
 
-	fmt.Printf("Creating Cloudflare Pages project: %s\n", p.ProjectName)
+	slog.Info("creating pages project", "project", p.ProjectName)
 	body, err := json.Marshal(map[string]string{"name": p.ProjectName, "production_branch": "production"})
 	if err != nil {
 		return fmt.Errorf("marshaling request: %w", err)
@@ -344,14 +353,16 @@ func (p *Publisher) uploadBucket(jwt string, files []*fileEntry) error {
 		resp, err := p.httpClient().Do(req)
 		if err != nil {
 			lastErr = err
-			time.Sleep(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
+			slog.Warn("upload attempt failed, retrying", "attempt", attempt+1, "max", maxUploadRetries, "error", lastErr)
+			p.sleepFunc()(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
 			continue
 		}
 		var cr cfResponse
 		if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
 			_ = resp.Body.Close()
 			lastErr = fmt.Errorf("decoding response: %w", err)
-			time.Sleep(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
+			slog.Warn("upload attempt failed, retrying", "attempt", attempt+1, "max", maxUploadRetries, "error", lastErr)
+			p.sleepFunc()(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
 			continue
 		}
 		_ = resp.Body.Close()
@@ -360,7 +371,8 @@ func (p *Publisher) uploadBucket(jwt string, files []*fileEntry) error {
 		}
 		lastErr = fmt.Errorf("upload failed: %s", cr.Errors)
 		if resp.StatusCode >= 500 {
-			time.Sleep(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
+			slog.Warn("upload attempt failed, retrying", "attempt", attempt+1, "max", maxUploadRetries, "error", lastErr)
+			p.sleepFunc()(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
 			continue
 		}
 		return lastErr
@@ -420,7 +432,8 @@ func (p *Publisher) createDeployment(manifest map[string]string) (string, error)
 		resp, err := p.httpClient().Do(req)
 		if err != nil {
 			lastErr = err
-			time.Sleep(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
+			slog.Warn("deployment attempt failed, retrying", "attempt", attempt+1, "max", maxDeployRetries, "error", lastErr)
+			p.sleepFunc()(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
 			continue
 		}
 		respBody, _ := io.ReadAll(resp.Body)
@@ -428,7 +441,8 @@ func (p *Publisher) createDeployment(manifest map[string]string) (string, error)
 		var cr cfResponse
 		if err := json.Unmarshal(respBody, &cr); err != nil {
 			lastErr = fmt.Errorf("decoding response: %w", err)
-			time.Sleep(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
+			slog.Warn("deployment attempt failed, retrying", "attempt", attempt+1, "max", maxDeployRetries, "error", lastErr)
+			p.sleepFunc()(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
 			continue
 		}
 		if cr.Success {
@@ -442,7 +456,8 @@ func (p *Publisher) createDeployment(manifest map[string]string) (string, error)
 		}
 		lastErr = fmt.Errorf("deployment failed: %s", string(respBody))
 		if resp.StatusCode >= 500 {
-			time.Sleep(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
+			slog.Warn("deployment attempt failed, retrying", "attempt", attempt+1, "max", maxDeployRetries, "error", lastErr)
+			p.sleepFunc()(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
 			continue
 		}
 		return "", lastErr

@@ -40,6 +40,37 @@ func TestHashFile_DifferentExtensionDifferentHash(t *testing.T) {
 	}
 }
 
+func TestHashFile_GoldenValues(t *testing.T) {
+	tests := []struct {
+		name    string
+		file    string
+		content []byte
+		want    string
+	}{
+		{"json_content", "test.json", []byte(`{"type":"object"}`), "5ed65b07f4c35e72bdf5ae858e6c994f"},
+		{"empty_file", "empty.json", []byte{}, "a384408d93abe898a69b6ab90c2aef05"},
+		{"no_extension", "noext", []byte("hello"), "324ea05bea4d7f75b8d9ed695e65b2ca"},
+		{"binary_content", "data.bin", []byte{0x00, 0xFF, 0x80, 0x01}, "e9287a7e1de263d3d6297fcbb974123a"},
+		{"html_content", "page.html", []byte("<html></html>"), "4752155c2c0c0320b40bca1d83e8380a"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			path := filepath.Join(tmpDir, tt.file)
+			if err := os.WriteFile(path, tt.content, 0o644); err != nil {
+				t.Fatalf("failed to write test file: %v", err)
+			}
+			got, err := HashFile(path)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("HashFile(%q) = %q, want %q", tt.file, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestHashFile_DifferentContentDifferentHash(t *testing.T) {
 	tmpDir := t.TempDir()
 	path1 := filepath.Join(tmpDir, "a.json")
