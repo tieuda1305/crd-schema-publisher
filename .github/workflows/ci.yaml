@@ -1,7 +1,11 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: CI
 
 on:
   pull_request:
+    branches: [main]
+  push:
     branches: [main]
 
 env:
@@ -9,19 +13,71 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  test:
+  detect:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      app: ${{ steps.paths.outputs.app }}
+      ci: ${{ steps.paths.outputs.ci }}
+      code: ${{ steps.eval.outputs.code }}
+      renovate: ${{ steps.paths.outputs.renovate }}
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Detect changed paths
+        id: paths
+        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        with:
+          filters: |
+            app:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - 'Dockerfile'
+            ci:
+              - '.github/workflows/ci.yaml'
+              - '.golangci.yml'
+            renovate:
+              - '.github/renovate.json5'
+
+      - name: Evaluate code change
+        id: eval
+        env:
+          APP: ${{ steps.paths.outputs.app }}
+          CI: ${{ steps.paths.outputs.ci }}
+        run: |
+          if [[ "${APP}" == "true" || "${CI}" == "true" ]]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up Go
-        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version-file: go.mod
 
+      - name: Lint workflows
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          actionlint -shellcheck="shellcheck"
+
+      - name: Lint markdown
+        run: npx --yes markdownlint-cli2@0.22.0 '**/*.md' '#node_modules'
+
       - name: Lint
-        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
+        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
 
       - name: Verify dependencies
         run: go mod verify
@@ -32,49 +88,186 @@ jobs:
           git diff --exit-code go.mod go.sum
 
       - name: Run tests
-        run: go test ./... -v
+        run: go test ./... -v -coverprofile=coverage.txt -covermode=atomic
+
+      - name: Coverage summary
+        run: go tool cover -func=coverage.txt
 
       - name: Run vet
         run: go vet ./...
 
   build:
-    needs: test
+    needs: [test, detect]
+    if: needs.detect.outputs.code == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      date-tag: ${{ steps.tags.outputs.date }}
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9 # v3
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
 
       - name: Verify base images
         run: |
-          cosign verify gcr.io/distroless/static:nonroot \
+          DISTROLESS_REF=$(grep '^FROM gcr.io/distroless/' Dockerfile | awk '{print $2}')
+          echo "Verifying ${DISTROLESS_REF}"
+          cosign verify "${DISTROLESS_REF}" \
             --certificate-oidc-issuer https://accounts.google.com \
             --certificate-identity keyless@distroless.iam.gserviceaccount.com
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push PR image
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+      - name: Generate tags
+        id: tags
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          FULL_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [[ "${EVENT_NAME}" == "push" ]]; then
+            DATE_TAG="v$(date -u +'%Y.%m%d.%H%M%S')"
+            echo "date=${DATE_TAG}" >> "$GITHUB_OUTPUT"
+            {
+              echo 'tags<<TAGS_EOF'
+              echo "${FULL_IMAGE}:${DATE_TAG}"
+              echo "${FULL_IMAGE}:latest"
+              echo 'TAGS_EOF'
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo 'tags<<TAGS_EOF'
+              echo "${FULL_IMAGE}:pr-${PR_NUMBER}"
+              echo 'TAGS_EOF'
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.tags.outputs.date || 'dev' }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  sign:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      packages: write
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+      - name: Log in to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sign image with cosign
+        env:
+          FULL_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          DATE_TAG: ${{ needs.build.outputs.date-tag }}
+          DIGEST: ${{ needs.build.outputs.digest }}
+        run: |
+          cosign sign --yes "${FULL_IMAGE}:${DATE_TAG}@${DIGEST}"
+          cosign sign --yes "${FULL_IMAGE}:latest@${DIGEST}"
+
+  release:
+    needs: [detect, build, sign]
+    if: github.event_name == 'push' && needs.detect.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DATE_TAG: ${{ needs.build.outputs.date-tag }}
+          FULL_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          DIGEST: ${{ needs.build.outputs.digest }}
+        run: |
+          git tag "${DATE_TAG}"
+          git push origin "${DATE_TAG}"
+
+          NOTES=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="${DATE_TAG}" \
+            --jq '.body')
+
+          IMAGE_LINE="**Image:** \`${FULL_IMAGE}:${DATE_TAG}@${DIGEST}\`"
+          printf '%s\n\n---\n\n%s\n' "${NOTES}" "${IMAGE_LINE}" \
+            | gh release create "${DATE_TAG}" \
+              --verify-tag \
+              --title "${DATE_TAG}" \
+              --notes-file -
+
+  renovate:
+    needs: detect
+    if: needs.detect.outputs.renovate == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Validate Renovate config
+        run: npx --yes --package renovate -- renovate-config-validator --strict
+
+  gate:
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [detect, test, build, sign, release, renovate]
+    permissions: {}
+    steps:
+      - name: Evaluate results
+        env:
+          DETECT: ${{ needs.detect.result }}
+          TEST: ${{ needs.test.result }}
+          BUILD: ${{ needs.build.result }}
+          SIGN: ${{ needs.sign.result }}
+          RELEASE: ${{ needs.release.result }}
+          RENOVATE: ${{ needs.renovate.result }}
+        run: |
+          echo "detect=${DETECT} test=${TEST} build=${BUILD} sign=${SIGN} release=${RELEASE} renovate=${RENOVATE}"
+
+          for result in "${DETECT}" "${TEST}" "${BUILD}" "${SIGN}" "${RELEASE}" "${RENOVATE}"; do
+            if [[ "${result}" != "success" && "${result}" != "skipped" ]]; then
+              echo "CI failed: job returned ${result}"
+              exit 1
+            fi
+          done
+
+          echo "CI passed"

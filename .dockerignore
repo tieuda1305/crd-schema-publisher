@@ -1,0 +1,17 @@
+.git
+.github
+.githooks
+.claude
+.golangci.yml
+.gitignore
+.markdownlint-cli2.yaml
+deploy
+output
+CLAUDE.md
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+README.md
+SECURITY.md
+LICENSE
+Dockerfile
+.dockerignore
