@@ -37,7 +37,7 @@
     {
       customType: 'regex',
       description: ['Process go install versions in CI workflows'],
-      managerFilePatterns: ['/^\\.github/workflows/.*\\.ya?ml$/'],
+      fileMatch: ['\\.github/workflows/.*\\.ya?ml$'],
       matchStrings: [
         'go install github\\.com/(?<depName>[\\w-]+/[\\w-]+)/.+@v(?<currentValue>[\\d.]+)',
       ],
