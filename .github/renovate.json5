@@ -32,6 +32,12 @@
       matchUpdateTypes: ['minor', 'patch'],
       automerge: true,
     },
+    {
+      description: 'Rate-limit Renovate self-updates (multiple releases per day)',
+      matchPackageNames: ['renovate'],
+      schedule: ['before 2am'],
+      minimumReleaseAge: '1 day',
+    },
   ],
   customManagers: [
     {
