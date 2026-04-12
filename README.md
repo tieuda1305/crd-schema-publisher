@@ -1,5 +1,5 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/sholdee/crd-schema-publisher)](https://goreportcard.com/report/github.com/sholdee/crd-schema-publisher)
-[![CI](https://github.com/sholdee/crd-schema-publisher/actions/workflows/build.yaml/badge.svg)](https://github.com/sholdee/crd-schema-publisher/actions/workflows/build.yaml)
+[![CI](https://github.com/sholdee/crd-schema-publisher/actions/workflows/ci.yaml/badge.svg)](https://github.com/sholdee/crd-schema-publisher/actions/workflows/ci.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 # crd-schema-publisher

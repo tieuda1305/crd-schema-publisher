@@ -99,7 +99,7 @@ No other external dependencies. Standard library for HTTP, JSON, HTML templates,
 
 ## CI/CD
 
-- **GitHub Actions** (`.github/workflows/build.yaml`): builds multi-arch image (amd64 + arm64) on push to main, pushes to `ghcr.io/sholdee/crd-schema-publisher`
+- **GitHub Actions** (`.github/workflows/ci.yaml`): tests on all PRs and pushes to main, builds multi-arch image (amd64 + arm64), pushes to `ghcr.io/sholdee/crd-schema-publisher`. PR builds push `pr-N` tags; main builds push date tags + `latest` and sign with cosign.
 - **Tags**: date-based (`vYYYY.MMDD.HHMMSS` UTC) + `latest`
 - **Container**: `gcr.io/distroless/static:nonroot` runtime base
 

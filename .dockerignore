@@ -1,0 +1,13 @@
+.git
+.github
+.githooks
+.claude
+.golangci.yml
+.gitignore
+deploy
+output
+CLAUDE.md
+README.md
+LICENSE
+Dockerfile
+.dockerignore
