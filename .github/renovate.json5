@@ -32,12 +32,18 @@
       matchUpdateTypes: ['minor', 'patch'],
       automerge: true,
     },
+    {
+      description: 'Rate-limit Renovate self-updates (multiple releases per day)',
+      matchPackageNames: ['renovate'],
+      schedule: ['before 2am'],
+      minimumReleaseAge: '1 day',
+    },
   ],
   customManagers: [
     {
       customType: 'regex',
       description: ['Process go install versions in CI workflows'],
-      fileMatch: ['\\.github/workflows/.*\\.ya?ml$'],
+      managerFilePatterns: ['/\\.github/workflows/.*\\.ya?ml$/'],
       matchStrings: [
         'go install github\\.com/(?<depName>[\\w-]+/[\\w-]+)/.+@v(?<currentValue>[\\d.]+)',
       ],
@@ -47,9 +53,9 @@
     {
       customType: 'regex',
       description: ['Process npx tool versions in CI workflows'],
-      fileMatch: ['\\.github/workflows/.*\\.ya?ml$'],
+      managerFilePatterns: ['/\\.github/workflows/.*\\.ya?ml$/'],
       matchStrings: [
-        'npx --yes (?<depName>[\\w-]+)@(?<currentValue>[\\d.]+)',
+        'npx --yes (?:--package )?(?<depName>[\\w-]+)@(?<currentValue>[\\d.]+)',
       ],
       datasourceTemplate: 'npm',
       versioningTemplate: 'npm',
