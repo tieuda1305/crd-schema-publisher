@@ -99,9 +99,48 @@ No other external dependencies. Standard library for HTTP, JSON, HTML templates,
 
 ## CI/CD
 
-- **GitHub Actions** (`.github/workflows/ci.yaml`): tests on all PRs and pushes to main, builds multi-arch image (amd64 + arm64), pushes to `ghcr.io/sholdee/crd-schema-publisher`. PR builds push `pr-N` tags; main builds push date tags + `latest` and sign with cosign.
-- **Tags**: date-based (`vYYYY.MMDD.HHMMSS` UTC) + `latest`
-- **Container**: `gcr.io/distroless/static:nonroot` runtime base
+### Pipeline Architecture (`.github/workflows/ci.yaml`)
+
+Single workflow triggered on PRs to `main` and pushes to `main`, with seven conditional jobs:
+
+| Job | Runs when | Purpose |
+|-----|-----------|---------|
+| `detect` | Always | `dorny/paths-filter` classifies changes: `app` (Go, go.mod/sum, Dockerfile), `ci` (workflow, golangci config), `renovate` (config only). Derives `code = app \|\| ci`. |
+| `test` | Always | actionlint, golangci-lint, go mod verify/tidy, go test, go vet |
+| `build` | `code == true` | Multi-arch Docker build (amd64 + arm64), pushes to GHCR. PR: `pr-N` tag. Main: `vYYYY.MMDD.HHMMSS` + `latest`. Verifies distroless base image digest with cosign before building. |
+| `sign` | Push to main | Cosign keyless signing via GitHub OIDC |
+| `release` | Push to main + `app == true` | Creates git tag, GitHub Release with auto-generated notes and image digest |
+| `renovate` | `renovate == true` | Validates `.github/renovate.json5` with `renovate-config-validator --strict` |
+| `gate` | Always | Evaluates all job results — only `success` and `skipped` pass. Single required status check for branch protection. |
+
+Build and release only trigger on application-affecting changes. CI-only changes (e.g., bumping an action SHA) build to verify but do not create releases.
+
+### Tags
+
+- **Production:** `vYYYY.MMDD.HHMMSS` (UTC) + `latest` — created on push to main when app code changes
+- **PR:** `pr-N` — created on every PR with code changes
+
+### Renovate (`.github/renovate.json5`)
+
+Automated dependency management with platform automerge.
+
+- **Presets:** `config:recommended`, `docker:enableMajor`, `:semanticCommits`, `helpers:pinGitHubActionDigests`
+- **Automerge (minor/patch):** GitHub Actions, Docker images (including digest), Go modules, CI tools
+- **Custom manager:** Regex manager matches `go install github.com/<org>/<repo>/...@v<version>` in workflow files, updates via `github-releases` datasource
+- **Major updates:** require manual review (all dependency types)
+
+### Dependency Pinning
+
+| Dependency type | Pinning strategy | Example |
+|----------------|-----------------|---------|
+| GitHub Actions | Commit SHA + version comment | `actions/checkout@<sha> # v4` |
+| Dockerfile base images | Tag + manifest digest | `golang:1.26.2@sha256:...` |
+| Go modules | `go.mod` + `go.sum`, verified with `go mod verify` | Standard |
+| CI tools (`go install`) | Semver tag, tracked by Renovate custom manager | `actionlint@v1.7.12` |
+
+### OCI Labels
+
+Static labels in Dockerfile: `source`, `description`, `licenses`. Build-time labels injected by CI: `revision` (commit SHA), `version` (date tag or `dev`), `created` (timestamp).
 
 ## Companion Repo
 

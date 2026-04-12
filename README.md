@@ -103,7 +103,19 @@ Pre-built multi-arch images (amd64 + arm64) are published to GHCR on every push 
 ghcr.io/sholdee/crd-schema-publisher:latest
 ```
 
+Each push to `main` with application code changes creates a GitHub Release with a date-based tag (`vYYYY.MMDD.HHMMSS`) and auto-generated release notes including the image digest. PR builds get `pr-N` tags for testing.
+
 Images use `gcr.io/distroless/static:nonroot` as the runtime base — no shell, no package manager, runs as UID 65534.
+
+### Image Verification
+
+Production images are signed with [cosign](https://docs.sigstore.dev/cosign/overview/) keyless signing via GitHub Actions OIDC. Verify any image:
+
+```bash
+cosign verify ghcr.io/sholdee/crd-schema-publisher:latest \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp github.com/sholdee/crd-schema-publisher
+```
 
 ## Build
 
@@ -168,15 +180,17 @@ Enable the pre-commit hook to enforce linting before each commit:
 git config core.hooksPath .githooks
 ```
 
-### Image Verification
+### Renovate
 
-Production images are signed with [cosign](https://docs.sigstore.dev/cosign/overview/) keyless signing via GitHub Actions OIDC. Verify any image:
+Dependencies are managed by [Renovate](https://docs.renovatebot.com/). Minor and patch updates for Go modules, GitHub Actions, and Docker images are automerged.
 
-```bash
-cosign verify ghcr.io/sholdee/crd-schema-publisher:latest \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp github.com/sholdee/crd-schema-publisher
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full contributor setup and guidelines.
+
+## Community
+
+- [Contributing](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY.md)
 
 ## License
 

@@ -85,7 +85,10 @@ jobs:
           git diff --exit-code go.mod go.sum
 
       - name: Run tests
-        run: go test ./... -v
+        run: go test ./... -v -coverprofile=coverage.txt -covermode=atomic
+
+      - name: Coverage summary
+        run: go tool cover -func=coverage.txt
 
       - name: Run vet
         run: go vet ./...
@@ -216,11 +219,12 @@ jobs:
           git tag "${DATE_TAG}"
           git push origin "${DATE_TAG}"
 
-          NOTES=$(gh api repos/{owner}/{repo}/releases/generate-notes \
+          NOTES=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
             -f tag_name="${DATE_TAG}" \
             --jq '.body')
 
-          printf '%s\n\n---\n\n**Image:** `%s:%s@%s`' "${NOTES}" "${FULL_IMAGE}" "${DATE_TAG}" "${DIGEST}" \
+          IMAGE_LINE="**Image:** \`${FULL_IMAGE}:${DATE_TAG}@${DIGEST}\`"
+          printf '%s\n\n---\n\n%s\n' "${NOTES}" "${IMAGE_LINE}" \
             | gh release create "${DATE_TAG}" \
               --verify-tag \
               --title "${DATE_TAG}" \
