@@ -20,8 +20,6 @@ jobs:
       pull-requests: read
     outputs:
       app: ${{ steps.paths.outputs.app }}
-      ci: ${{ steps.paths.outputs.ci }}
-      code: ${{ steps.eval.outputs.code }}
       renovate: ${{ steps.paths.outputs.renovate }}
     steps:
       - name: Checkout
@@ -37,23 +35,8 @@ jobs:
               - 'go.mod'
               - 'go.sum'
               - 'Dockerfile'
-            ci:
-              - '.github/workflows/ci.yaml'
-              - '.golangci.yml'
             renovate:
               - '.github/renovate.json5'
-
-      - name: Evaluate code change
-        id: eval
-        env:
-          APP: ${{ steps.paths.outputs.app }}
-          CI: ${{ steps.paths.outputs.ci }}
-        run: |
-          if [[ "${APP}" == "true" || "${CI}" == "true" ]]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "code=false" >> "$GITHUB_OUTPUT"
-          fi
 
   test:
     runs-on: ubuntu-latest
@@ -98,7 +81,7 @@ jobs:
 
   build:
     needs: [test, detect]
-    if: needs.detect.outputs.code == 'true'
+    if: needs.detect.outputs.app == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
