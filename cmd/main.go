@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,40 +20,53 @@ import (
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 )
 
+func initLogger(cmd string) {
+	var handler slog.Handler
+	switch cmd {
+	case "preview":
+		handler = slog.NewTextHandler(os.Stderr, nil)
+	default:
+		handler = slog.NewJSONHandler(os.Stderr, nil)
+	}
+	slog.SetDefault(slog.New(handler))
+}
+
 func main() {
 	cmd := "run"
 	if len(os.Args) > 1 {
 		cmd = os.Args[1]
 	}
+	initLogger(cmd)
 
 	switch cmd {
 	case "run":
 		if err := runAll(); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			slog.Error("command failed", "command", cmd, "error", err)
 			os.Exit(1)
 		}
 	case "extract":
 		if err := runExtract(); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			slog.Error("command failed", "command", cmd, "error", err)
 			os.Exit(1)
 		}
 	case "upload":
 		if err := runUpload(); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			slog.Error("command failed", "command", cmd, "error", err)
 			os.Exit(1)
 		}
 	case "watch":
 		if err := runWatch(); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			slog.Error("command failed", "command", cmd, "error", err)
 			os.Exit(1)
 		}
 	case "preview":
 		if err := runPreview(); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			slog.Error("command failed", "command", cmd, "error", err)
 			os.Exit(1)
 		}
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command: %s\nusage: crd-schema-publisher [run|extract|upload|watch|preview]\n", cmd)
+		slog.Error("unknown command", "command", cmd)
+		fmt.Fprintf(os.Stderr, "usage: crd-schema-publisher [run|extract|upload|watch|preview]\n")
 		os.Exit(1)
 	}
 }
@@ -76,21 +90,21 @@ func runExtract() error {
 	outputDir := getEnv("OUTPUT_DIR", "/output")
 	kubeContext := os.Getenv("KUBECTL_CONTEXT")
 
-	fmt.Println("Building Kubernetes client...")
+	slog.Info("building kubernetes client")
 	client, err := extractor.BuildClient(kubeContext)
 	if err != nil {
 		return fmt.Errorf("building client: %w", err)
 	}
 
-	fmt.Println("Listing CRDs...")
-	crds, err := extractor.ListCRDs(client)
+	slog.Info("listing CRDs")
+	crds, err := extractor.ListCRDs(client.ApiextensionsV1().CustomResourceDefinitions())
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Found %d CRDs\n", len(crds))
+	slog.Info("found CRDs", "count", len(crds))
 
 	if len(crds) == 0 {
-		fmt.Println("No CRDs found, nothing to extract")
+		slog.Info("no CRDs found")
 		return nil
 	}
 
@@ -98,21 +112,21 @@ func runExtract() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Wrote %d JSON schemas to %s\n", count, outputDir)
+	slog.Info("wrote schemas", "count", count, "dir", outputDir)
 
 	if os.Getenv("SKIP_RENDER") != "true" {
-		fmt.Println("Rendering schema pages...")
+		slog.Info("rendering schema pages")
 		if err := renderer.RenderAll(outputDir); err != nil {
 			return fmt.Errorf("rendering schemas: %w", err)
 		}
 	}
 
-	fmt.Println("Generating index.html...")
+	slog.Info("generating index")
 	if err := index.Generate(outputDir); err != nil {
 		return fmt.Errorf("generating index: %w", err)
 	}
 
-	fmt.Println("Extract complete")
+	slog.Info("extract complete")
 	return nil
 }
 
@@ -214,13 +228,13 @@ func runPreview() error {
 			_ = os.RemoveAll(dir)
 			return fmt.Errorf("scaffolding sample data: %w", err)
 		}
-		fmt.Printf("Using sample data in %s\n", dir)
+		slog.Info("using sample data", "dir", dir)
 	} else {
-		fmt.Printf("Using existing output at %s\n", dir)
+		slog.Info("using existing output", "dir", dir)
 	}
 
 	if os.Getenv("SKIP_RENDER") != "true" {
-		fmt.Println("Rendering schema pages...")
+		slog.Info("rendering schema pages")
 		if err := renderer.RenderAll(dir); err != nil {
 			if isTempDir {
 				_ = os.RemoveAll(dir)
@@ -229,7 +243,7 @@ func runPreview() error {
 		}
 	}
 
-	fmt.Println("Generating index.html...")
+	slog.Info("generating index")
 	if err := index.Generate(dir); err != nil {
 		if isTempDir {
 			_ = os.RemoveAll(dir)
@@ -250,7 +264,7 @@ func runPreview() error {
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-	fmt.Printf("Serving at http://%s (Ctrl+C to stop)\n", addr)
+	slog.Info("serving preview", "addr", addr)
 	err := srv.ListenAndServe()
 	if isTempDir {
 		_ = os.RemoveAll(dir)

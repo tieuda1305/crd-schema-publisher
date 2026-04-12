@@ -18,6 +18,11 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+// CRDLister abstracts the Kubernetes CRD list operation for testability.
+type CRDLister interface {
+	List(ctx context.Context, opts metav1.ListOptions) (*apiextensionsv1.CustomResourceDefinitionList, error)
+}
+
 func BuildConfig(kubeContext string) (*rest.Config, error) {
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
@@ -42,8 +47,8 @@ func BuildClient(kubeContext string) (*apiextensionsclient.Clientset, error) {
 	return apiextensionsclient.NewForConfig(cfg)
 }
 
-func ListCRDs(client *apiextensionsclient.Clientset) ([]apiextensionsv1.CustomResourceDefinition, error) {
-	list, err := client.ApiextensionsV1().CustomResourceDefinitions().List(context.Background(), metav1.ListOptions{})
+func ListCRDs(lister CRDLister) ([]apiextensionsv1.CustomResourceDefinition, error) {
+	list, err := lister.List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("listing CRDs: %w", err)
 	}

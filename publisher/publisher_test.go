@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func fullFlowHandler(t *testing.T, calls *[]string) http.Handler {
@@ -104,5 +106,178 @@ func TestPublish_CreatesProjectIfMissing(t *testing.T) {
 	}
 	if !projectCreated {
 		t.Fatal("expected project to be created")
+	}
+}
+
+func tempFileEntry(t *testing.T) *fileEntry {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.json")
+	_ = os.WriteFile(path, []byte(`{"test":true}`), 0o644)
+	return &fileEntry{
+		relPath: "test.json", absPath: path,
+		hash: "abc123", size: 13, contentType: "application/json",
+	}
+}
+
+func TestUploadBucket_RetryOn5xx(t *testing.T) {
+	var count atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := count.Add(1)
+		if n <= 2 {
+			w.WriteHeader(http.StatusBadGateway)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "errors": []interface{}{map[string]interface{}{"message": "bad gateway"}}})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	}))
+	defer server.Close()
+
+	p := &Publisher{
+		APIToken: "fake-token", AccountID: "fake-account", ProjectName: "test-project",
+		AssetsURL: server.URL,
+		SleepFunc: func(time.Duration) {},
+	}
+	err := p.uploadBucket("fake-jwt", []*fileEntry{tempFileEntry(t)})
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if got := count.Load(); got != 3 {
+		t.Fatalf("expected 3 requests, got %d", got)
+	}
+}
+
+func TestUploadBucket_NoRetryOn4xx(t *testing.T) {
+	var count atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count.Add(1)
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "errors": []interface{}{map[string]interface{}{"message": "bad request"}}})
+	}))
+	defer server.Close()
+
+	p := &Publisher{
+		APIToken: "fake-token", AccountID: "fake-account", ProjectName: "test-project",
+		AssetsURL: server.URL,
+		SleepFunc: func(time.Duration) {},
+	}
+	err := p.uploadBucket("fake-jwt", []*fileEntry{tempFileEntry(t)})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if got := count.Load(); got != 1 {
+		t.Fatalf("expected 1 request (no retries), got %d", got)
+	}
+}
+
+func TestUploadBucket_MaxRetriesExceeded(t *testing.T) {
+	var count atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count.Add(1)
+		w.WriteHeader(http.StatusBadGateway)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "errors": []interface{}{map[string]interface{}{"message": "bad gateway"}}})
+	}))
+	defer server.Close()
+
+	p := &Publisher{
+		APIToken: "fake-token", AccountID: "fake-account", ProjectName: "test-project",
+		AssetsURL: server.URL,
+		SleepFunc: func(time.Duration) {},
+	}
+	err := p.uploadBucket("fake-jwt", []*fileEntry{tempFileEntry(t)})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "after 5 retries") {
+		t.Fatalf("expected error to contain 'after 5 retries', got: %v", err)
+	}
+	if got := count.Load(); got != 5 {
+		t.Fatalf("expected 5 requests, got %d", got)
+	}
+}
+
+func TestCreateDeployment_RetryOn5xx(t *testing.T) {
+	var count atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := count.Add(1)
+		if n <= 2 {
+			w.WriteHeader(http.StatusBadGateway)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "errors": []interface{}{map[string]interface{}{"message": "bad gateway"}}})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": map[string]interface{}{"url": "https://test.pages.dev"}})
+	}))
+	defer server.Close()
+
+	p := &Publisher{
+		APIToken: "fake-token", AccountID: "fake-account", ProjectName: "test-project",
+		BaseURL:   server.URL,
+		SleepFunc: func(time.Duration) {},
+	}
+	url, err := p.createDeployment(map[string]string{"/index.html": "abc123"})
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if url != "https://test.pages.dev" {
+		t.Fatalf("expected URL https://test.pages.dev, got %s", url)
+	}
+	if got := count.Load(); got != 3 {
+		t.Fatalf("expected 3 requests, got %d", got)
+	}
+}
+
+func TestCreateDeployment_MaxRetriesExceeded(t *testing.T) {
+	var count atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count.Add(1)
+		w.WriteHeader(http.StatusBadGateway)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "errors": []interface{}{map[string]interface{}{"message": "bad gateway"}}})
+	}))
+	defer server.Close()
+
+	p := &Publisher{
+		APIToken: "fake-token", AccountID: "fake-account", ProjectName: "test-project",
+		BaseURL:   server.URL,
+		SleepFunc: func(time.Duration) {},
+	}
+	_, err := p.createDeployment(map[string]string{"/index.html": "abc123"})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "after 3 retries") {
+		t.Fatalf("expected error to contain 'after 3 retries', got: %v", err)
+	}
+	if got := count.Load(); got != 3 {
+		t.Fatalf("expected 3 requests, got %d", got)
+	}
+}
+
+func TestPublish_MalformedUploadToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/projects/test-project"):
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": map[string]interface{}{"name": "test-project"}})
+		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/upload-token"):
+			_, _ = w.Write([]byte("not json at all"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(tmpDir, "test.json"), []byte(`{}`), 0o644)
+
+	p := &Publisher{
+		APIToken: "fake-token", AccountID: "fake-account", ProjectName: "test-project",
+		BaseURL: server.URL, AssetsURL: server.URL,
+		SleepFunc: func(time.Duration) {},
+	}
+	err := p.Publish(tmpDir)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "decoding response") {
+		t.Fatalf("expected error to contain 'decoding response', got: %v", err)
 	}
 }
