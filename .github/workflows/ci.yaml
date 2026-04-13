@@ -276,7 +276,8 @@ jobs:
             --set podDisruptionBudget.minAvailable=1 \
             --set networkPolicy.enabled=true \
             --set replicaCount=3 \
-            --set podAntiAffinityPreset=soft
+            --set podAntiAffinityPreset=soft \
+            --set persistence.enabled=true
 
       - name: Verify mode isolation
         run: |
@@ -326,6 +327,19 @@ jobs:
           fi
           echo "${DASHBOARD}" | python3 -m json.tool > /dev/null
           echo "Dashboard JSON embedded and valid"
+
+      - name: Verify existingClaim suppresses PVC creation
+        run: |
+          PVC_COUNT=$(helm template test charts/crd-schema-publisher \
+            --set existingSecret.name=test \
+            --set persistence.enabled=true \
+            --set persistence.existingClaim=my-pvc \
+            | grep -c "^kind: PersistentVolumeClaim$" || true)
+          if [[ "${PVC_COUNT}" -ne 0 ]]; then
+            echo "ERROR: existingClaim should suppress PVC creation"
+            exit 1
+          fi
+          echo "existingClaim correctly suppresses PVC creation"
 
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
