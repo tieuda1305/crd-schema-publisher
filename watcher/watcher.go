@@ -13,6 +13,7 @@ import (
 
 	"github.com/sholdee/crd-schema-publisher/extractor"
 	"github.com/sholdee/crd-schema-publisher/index"
+	"github.com/sholdee/crd-schema-publisher/metrics"
 	"github.com/sholdee/crd-schema-publisher/publisher"
 	"github.com/sholdee/crd-schema-publisher/renderer"
 
@@ -39,6 +40,7 @@ type Config struct {
 	LeaseName  string
 	PodName    string
 	HealthPort string
+	Metrics    *metrics.Metrics    // nil = no metrics recording
 	CRDLister  extractor.CRDLister // nil = derive from Client
 }
 
@@ -54,7 +56,8 @@ func Run(ctx context.Context, cfg Config) error {
 	)
 	// Start health server before leader election
 	healthReady := &atomic.Bool{}
-	healthServer := startHealthServer(cfg.HealthPort, healthReady)
+	cfg.Metrics = metrics.New()
+	healthServer := startHealthServer(cfg.HealthPort, healthReady, cfg.Metrics)
 
 	kubeClient, err := kubernetes.NewForConfig(cfg.KubeConfig)
 	if err != nil {
@@ -88,9 +91,11 @@ func Run(ctx context.Context, cfg Config) error {
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
 				slog.Info("acquired leadership, starting watch loop")
+				cfg.Metrics.SetLeader(true)
 				runLeader(ctx, cfg)
 			},
 			OnStoppedLeading: func() {
+				cfg.Metrics.SetLeader(false)
 				// Distinguish graceful shutdown (context cancelled) from unexpected lease loss.
 				// On unexpected loss, exit immediately — standard controller pattern.
 				// On graceful shutdown, return normally so Run() can drain.
@@ -159,7 +164,7 @@ func runLeader(ctx context.Context, cfg Config) {
 
 	debounceLoop(trigger, cfg.Debounce, func() error {
 		return publishCycle(cfg)
-	}, ctx.Done())
+	}, cfg.Metrics, ctx.Done())
 }
 
 func signalTrigger(ch chan struct{}) {
@@ -175,7 +180,7 @@ func signalTrigger(ch chan struct{}) {
 // to leave time for health server shutdown and process cleanup.
 const drainTimeout = 25 * time.Second
 
-func debounceLoop(trigger <-chan struct{}, duration time.Duration, publish func() error, done <-chan struct{}) {
+func debounceLoop(trigger <-chan struct{}, duration time.Duration, publish func() error, m *metrics.Metrics, done <-chan struct{}) {
 	var timer *time.Timer
 	var timerC <-chan time.Time
 	var publishing atomic.Bool
@@ -217,6 +222,7 @@ func debounceLoop(trigger <-chan struct{}, duration time.Duration, publish func(
 			timerC = nil
 			if !publishing.CompareAndSwap(false, true) {
 				slog.Warn("publish already in progress, skipping")
+				m.RecordSkip()
 				continue
 			}
 			wg.Add(1)
@@ -232,8 +238,14 @@ func debounceLoop(trigger <-chan struct{}, duration time.Duration, publish func(
 	}
 }
 
-func publishCycle(cfg Config) error {
+func publishCycle(cfg Config) (retErr error) {
 	start := time.Now()
+	defer func() {
+		cfg.Metrics.RecordPublishCycle(time.Since(start), retErr)
+	}()
+	// Reset discovery gauges so they reflect each cycle, not stale previous values
+	cfg.Metrics.RecordDiscovery(0, 0)
+
 	// Clean output dir
 	if err := cleanDir(cfg.OutputDir); err != nil {
 		return fmt.Errorf("cleaning output dir: %w", err)
@@ -259,6 +271,7 @@ func publishCycle(cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("writing schemas: %w", err)
 	}
+	cfg.Metrics.RecordDiscovery(len(crds), count)
 	slog.Info("wrote schemas", "count", count)
 
 	if os.Getenv("SKIP_RENDER") != "true" {
@@ -301,7 +314,7 @@ func cleanDir(dir string) error {
 	return nil
 }
 
-func startHealthServer(port string, ready *atomic.Bool) *http.Server {
+func startHealthServer(port string, ready *atomic.Bool, m *metrics.Metrics) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -316,6 +329,7 @@ func startHealthServer(port string, ready *atomic.Bool) *http.Server {
 			_, _ = w.Write([]byte("not ready"))
 		}
 	})
+	mux.Handle("/metrics", m.Handler())
 	server := &http.Server{Addr: ":" + port, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
