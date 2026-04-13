@@ -1,0 +1,16 @@
+{{- if .Values.grafana.dashboard.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "crd-schema-publisher.fullname" . }}-dashboard
+  labels:
+    {{- include "crd-schema-publisher.labels" . | nindent 4 }}
+    {{ .Values.grafana.dashboard.label }}: {{ .Values.grafana.dashboard.labelValue | quote }}
+  {{- if .Values.grafana.dashboard.folder }}
+  annotations:
+    grafana_folder: {{ .Values.grafana.dashboard.folder | quote }}
+  {{- end }}
+data:
+  crd-schema-publisher.json: |-
+    {{- .Files.Get "dashboards/grafana-dashboard.json" | nindent 4 }}
+{{- end }}

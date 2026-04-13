@@ -1,0 +1,16 @@
+{{- if and .Values.rbac.create (eq .Values.mode "controller") -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "crd-schema-publisher.fullname" . }}-leader-election
+  labels:
+    {{- include "crd-schema-publisher.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "crd-schema-publisher.fullname" . }}-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "crd-schema-publisher.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

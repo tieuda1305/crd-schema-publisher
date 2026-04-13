@@ -1,0 +1,28 @@
+{{- if eq .Values.mode "controller" }}
+crd-schema-publisher is running in controller mode.
+
+The watcher will detect CRD changes and publish schemas automatically.
+Leader election ensures only one replica publishes at a time.
+
+Health endpoints:
+  /healthz  - liveness
+  /readyz   - readiness
+  /metrics  - Prometheus metrics
+{{- else }}
+crd-schema-publisher is running in cronjob mode.
+
+Schemas will be extracted and published on schedule: {{ .Values.cronjob.schedule }}
+{{- end }}
+
+Secret: {{ include "crd-schema-publisher.secretName" . }}
+{{- if .Values.existingSecret.name }}
+  (using existing secret)
+{{- else if .Values.externalSecret.enabled }}
+  (managed by ExternalSecret — wait for ESO to sync before the pod will start)
+{{- end }}
+
+NOTE: This chart does not create its namespace. Use --create-namespace on first install:
+  helm install crd-schema-publisher oci://ghcr.io/sholdee/charts/crd-schema-publisher \
+    --namespace crd-schema-publisher \
+    --create-namespace \
+    --set existingSecret.name=<secret-name>

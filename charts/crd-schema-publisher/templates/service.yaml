@@ -1,0 +1,17 @@
+{{- if eq .Values.mode "controller" -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "crd-schema-publisher.fullname" . }}
+  labels:
+    {{- include "crd-schema-publisher.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: health
+      port: {{ .Values.config.healthPort }}
+      targetPort: health
+      protocol: TCP
+  selector:
+    {{- include "crd-schema-publisher.selectorLabels" . | nindent 4 }}
+{{- end }}

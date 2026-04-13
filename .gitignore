@@ -1,5 +1,5 @@
 # Binaries
-crd-schema-publisher
+/crd-schema-publisher
 *.exe
 *.dll
 *.so

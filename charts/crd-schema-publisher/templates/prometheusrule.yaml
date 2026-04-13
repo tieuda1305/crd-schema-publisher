@@ -1,0 +1,49 @@
+{{- if and (eq .Values.mode "controller") .Values.metrics.prometheusRule.enabled -}}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "crd-schema-publisher.fullname" . }}
+  labels:
+    {{- include "crd-schema-publisher.labels" . | nindent 4 }}
+    {{- with .Values.metrics.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: crd-schema-publisher
+      rules:
+        - alert: CRDPublisherWatchdogStale
+          expr: time() - crdpublisher_watchdog_timestamp > {{ .Values.metrics.prometheusRule.rules.watchdogStaleSeconds }}
+          for: {{ .Values.metrics.prometheusRule.rules.watchdogStaleFor }}
+          labels:
+            severity: warning
+          annotations:
+            summary: CRD schema publisher watchdog is stale
+            description: >-
+              The crd-schema-publisher watcher loop has not sent a heartbeat
+              in over {{ .Values.metrics.prometheusRule.rules.watchdogStaleSeconds }} seconds.
+              This indicates the process may be stuck or crashed.
+        - alert: CRDPublisherNoSuccessfulPublish
+          expr: >-
+            (crdpublisher_leader == 1)
+            and (time() - crdpublisher_last_successful_publish_timestamp > {{ .Values.metrics.prometheusRule.rules.noPublishSeconds }})
+          for: {{ .Values.metrics.prometheusRule.rules.noPublishFor }}
+          labels:
+            severity: warning
+          annotations:
+            summary: No successful CRD schema publish in over {{ .Values.metrics.prometheusRule.rules.noPublishSeconds }}s
+            description: >-
+              The leader pod has not completed a successful publish cycle
+              in over {{ .Values.metrics.prometheusRule.rules.noPublishSeconds }} seconds.
+              Check logs for errors.
+        - alert: CRDPublisherErrorSpike
+          expr: increase(crdpublisher_publish_cycles_total{result="error"}[1h]) > {{ .Values.metrics.prometheusRule.rules.errorSpikeThreshold }}
+          for: {{ .Values.metrics.prometheusRule.rules.errorSpikeFor }}
+          labels:
+            severity: warning
+          annotations:
+            summary: CRD schema publisher error spike
+            description: >-
+              More than {{ .Values.metrics.prometheusRule.rules.errorSpikeThreshold }} publish
+              cycle errors in the last hour.
+{{- end }}

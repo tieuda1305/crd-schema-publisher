@@ -1,0 +1,282 @@
+# -- Deployment mode: "controller" (Deployment with leader election) or "cronjob" (CronJob)
+mode: controller
+
+# -- Number of replicas (controller mode only; leader election handles safety)
+replicaCount: 1
+
+image:
+  # -- Container image repository
+  repository: ghcr.io/sholdee/crd-schema-publisher
+  # -- Image tag (defaults to appVersion from Chart.yaml)
+  tag: ""
+  # -- Image digest (takes precedence over tag when set)
+  digest: ""
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+
+# -- Image pull secrets for private registries
+imagePullSecrets: []
+
+# -- Override the chart name
+nameOverride: ""
+# -- Override the full release name
+fullnameOverride: ""
+
+# ---------------------------------------------------------------------------
+# Application configuration
+# ---------------------------------------------------------------------------
+config:
+  # -- Cloudflare Pages project name
+  cfPagesProject: kubernetes-schemas
+  # -- Schema output directory inside the container
+  outputDir: /output
+  # -- Seconds to wait after the last CRD event before publishing (controller only)
+  debounceSeconds: "15"
+  # -- Health/metrics server port (controller only)
+  healthPort: 8080
+  # -- Leader election lease name (controller only)
+  leaseName: crd-schema-publisher
+  # -- Set to "true" to skip HTML schema page rendering
+  skipRender: ""
+
+# ---------------------------------------------------------------------------
+# Secrets — configure exactly one of the two options below
+# Precedence: existingSecret > externalSecret
+# ---------------------------------------------------------------------------
+
+# Option 1: Reference a pre-existing Secret
+existingSecret:
+  # -- Name of an existing Secret containing CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID
+  name: ""
+
+# Option 2: Create an ExternalSecret CR (requires External Secrets Operator)
+externalSecret:
+  # -- Create an ExternalSecret resource
+  enabled: false
+  # -- SecretStore or ClusterSecretStore reference
+  secretStoreRef:
+    name: ""
+    kind: SecretStore
+  # -- Refresh interval for the external secret
+  refreshInterval: 1h
+  # -- Remote key mappings
+  data:
+    - secretKey: CLOUDFLARE_API_TOKEN
+      remoteRef:
+        key: crd-schema-publisher-cloudflare
+        property: api-token
+    - secretKey: CLOUDFLARE_ACCOUNT_ID
+      remoteRef:
+        key: crd-schema-publisher-cloudflare
+        property: account-id
+
+# ---------------------------------------------------------------------------
+# Service account
+# ---------------------------------------------------------------------------
+serviceAccount:
+  # -- Create a ServiceAccount
+  create: true
+  # -- Automount the service account token
+  automount: true
+  # -- Additional annotations for the ServiceAccount
+  annotations: {}
+  # -- Override the ServiceAccount name
+  name: ""
+
+# ---------------------------------------------------------------------------
+# RBAC
+# ---------------------------------------------------------------------------
+rbac:
+  # -- Create ClusterRole/ClusterRoleBinding for CRD read access
+  create: true
+
+# ---------------------------------------------------------------------------
+# CronJob settings (only used when mode=cronjob)
+# ---------------------------------------------------------------------------
+cronjob:
+  # -- Cron schedule expression
+  schedule: "0 3 * * *"
+  # -- Concurrency policy for the CronJob
+  concurrencyPolicy: Forbid
+  # -- Number of successful job completions to retain
+  successfulJobsHistoryLimit: 1
+  # -- Number of failed job completions to retain
+  failedJobsHistoryLimit: 3
+  # -- Maximum runtime for each job in seconds
+  activeDeadlineSeconds: 1800
+  # -- Restart policy for job pods
+  restartPolicy: OnFailure
+
+# ---------------------------------------------------------------------------
+# Deployment settings (only used when mode=controller)
+# ---------------------------------------------------------------------------
+
+# -- Deployment update strategy
+strategy:
+  type: RollingUpdate
+
+# ---------------------------------------------------------------------------
+# Pod and container configuration
+# ---------------------------------------------------------------------------
+
+# -- Container resource requests and limits
+resources:
+  requests:
+    cpu: 50m
+    memory: 500Mi
+  limits:
+    cpu: 500m
+    memory: 500Mi
+
+# -- Pod security context (applied to the pod spec)
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  runAsGroup: 65534
+  fsGroup: 65534
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# -- Liveness probe configuration (controller mode only)
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: health
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+# -- Readiness probe configuration (controller mode only)
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: health
+  initialDelaySeconds: 3
+  periodSeconds: 5
+
+# -- Annotations added to the Deployment or CronJob metadata (e.g. reloader.stakater.com/auto)
+annotations: {}
+
+# -- Annotations added to the pod template metadata
+podAnnotations: {}
+
+# -- Additional pod labels
+podLabels: {}
+
+# -- Node selector constraints
+nodeSelector: {}
+
+# -- Tolerations for pod scheduling
+tolerations: []
+
+# -- Affinity rules (controller mode only; overrides podAntiAffinityPreset when set)
+affinity: {}
+
+# -- Topology spread constraints (controller mode only)
+topologySpreadConstraints: []
+
+# -- Pod anti-affinity preset: "soft", "hard", or "" (disabled; controller mode only)
+# Only applied when affinity is empty
+podAntiAffinityPreset: ""
+
+# ---------------------------------------------------------------------------
+# Pod disruption budget (controller mode only)
+# ---------------------------------------------------------------------------
+podDisruptionBudget:
+  # -- Create a PodDisruptionBudget
+  enabled: false
+  # -- Minimum number of available pods
+  # minAvailable: 1
+  # -- Maximum number of unavailable pods
+  # maxUnavailable: 1
+
+# -- Priority class name for pods
+priorityClassName: ""
+
+# ---------------------------------------------------------------------------
+# Monitoring
+# ---------------------------------------------------------------------------
+metrics:
+  podMonitor:
+    # -- Create a PodMonitor for Prometheus Operator
+    enabled: false
+    # -- Scrape interval
+    interval: 30s
+    # -- Additional labels for the PodMonitor
+    labels: {}
+
+  prometheusRule:
+    # -- Create PrometheusRule alerts
+    enabled: false
+    # -- Additional labels for the PrometheusRule
+    labels: {}
+    # -- Alert thresholds
+    rules:
+      # -- Watchdog stale threshold in seconds
+      watchdogStaleSeconds: 120
+      # -- Duration before watchdog stale alert fires
+      watchdogStaleFor: 5m
+      # -- No successful publish threshold in seconds
+      noPublishSeconds: 86400
+      # -- Duration before no-publish alert fires
+      noPublishFor: 1h
+      # -- Error spike threshold (errors per hour)
+      errorSpikeThreshold: 5
+      # -- Duration before error spike alert fires
+      errorSpikeFor: 15m
+
+# ---------------------------------------------------------------------------
+# Grafana dashboard
+# ---------------------------------------------------------------------------
+grafana:
+  dashboard:
+    # -- Install the Grafana dashboard as a ConfigMap
+    enabled: false
+    # -- Label key for Grafana sidecar discovery
+    label: grafana_dashboard
+    # -- Label value for Grafana sidecar discovery
+    labelValue: "1"
+    # -- Folder annotation for the Grafana sidecar
+    folder: ""
+
+# ---------------------------------------------------------------------------
+# Network policies
+# ---------------------------------------------------------------------------
+
+# -- Native Kubernetes NetworkPolicy
+networkPolicy:
+  # -- Create a NetworkPolicy
+  enabled: false
+  # -- Egress rules (no built-in egress; add rules here if needed)
+  extraEgress: []
+  # -- Extra ingress rules appended to the built-in health port rule (controller mode only)
+  extraIngress: []
+
+# -- Cilium network policy (mutually exclusive with networkPolicy)
+ciliumNetworkPolicy:
+  # -- Create a CiliumNetworkPolicy
+  enabled: false
+  # -- Egress rules (no built-in egress; add rules here if needed)
+  extraEgress: []
+  # -- Extra ingress rules appended to the built-in health port rule (controller mode only)
+  extraIngress: []
+
+# ---------------------------------------------------------------------------
+# Extra objects
+# ---------------------------------------------------------------------------
+
+# -- Additional Kubernetes objects to create (supports Go templating)
+extraObjects: []
+#  - apiVersion: v1
+#    kind: ConfigMap
+#    metadata:
+#      name: '{{ include "crd-schema-publisher.fullname" . }}-extra'
+#    data:
+#      key: value

@@ -24,6 +24,56 @@ The JSON Schema conversion improves upon the widely-used [openapi2jsonschema.py]
 
 ## 🚀 Deploying
 
+### Helm Chart (recommended)
+
+The chart is distributed as an OCI artifact and signed with cosign:
+
+```bash
+helm install crd-schema-publisher oci://ghcr.io/sholdee/charts/crd-schema-publisher \
+  --namespace crd-schema-publisher \
+  --create-namespace \
+  --set existingSecret.name=crd-schema-publisher-cloudflare
+```
+
+This installs in **controller mode** by default (real-time watch with leader election). For scheduled runs, set `--set mode=cronjob`.
+
+#### Credentials
+
+Publishing requires a Cloudflare API token with **Cloudflare Pages: Edit** permission and your account ID. Two secret management options are supported:
+
+- **`existingSecret`** — reference a pre-existing Secret containing `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
+- **`externalSecret`** — create an [ExternalSecret](https://external-secrets.io) CR that syncs credentials from an external provider (Vault, AWS Secrets Manager, 1Password, etc.)
+
+```bash
+# Using External Secrets Operator
+helm install crd-schema-publisher oci://ghcr.io/sholdee/charts/crd-schema-publisher \
+  --namespace crd-schema-publisher \
+  --create-namespace \
+  --set externalSecret.enabled=true \
+  --set externalSecret.secretStoreRef.name=my-store \
+  --set externalSecret.secretStoreRef.kind=ClusterSecretStore
+```
+
+The default remote ref points to a `crd-schema-publisher-cloudflare` key with `api-token` and `account-id` properties — override via `externalSecret.data` if your provider uses different paths.
+
+#### Optional features
+
+PodMonitor, PrometheusRule, Grafana dashboard (sidecar ConfigMap), NetworkPolicy, CiliumNetworkPolicy, PodDisruptionBudget, pod anti-affinity presets, topology spread constraints, and templated extra objects. See [`values.yaml`](charts/crd-schema-publisher/values.yaml) for all options.
+
+#### Verification
+
+Verify the chart signature (substitute the version you installed — find it with `helm list`):
+
+```bash
+cosign verify ghcr.io/sholdee/charts/crd-schema-publisher:<VERSION> \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp github.com/sholdee/crd-schema-publisher
+```
+
+### Raw Manifests
+
+For users who prefer raw YAML without Helm, deploy manifests are available in [`deploy/`](deploy/).
+
 ### Watch Mode (recommended)
 
 Reacts to CRD changes in real-time with debounced publish cycles. Supports leader election for safe rolling updates. The container runs with `args: ["watch"]` — see [`deploy/deployment.yaml`](deploy/deployment.yaml).
@@ -42,7 +92,7 @@ kubectl apply -f deploy/common.yaml -f deploy/cronjob.yaml
 
 Both modes share [`deploy/common.yaml`](deploy/common.yaml) which provides namespace, ServiceAccount, RBAC (ClusterRole for CRD read access), and a hardened security context (nonroot, read-only rootfs, dropped capabilities).
 
-The deploy manifests include a placeholder Secret named `cloudflare-credentials`. To provide your Cloudflare credentials, either edit the placeholder values in `common.yaml` directly before applying, or replace the Secret resource with your own secrets management (e.g., ExternalSecret, Sealed Secret). If the Secret is omitted, both modes run extract-only (schemas written to `OUTPUT_DIR` but not uploaded).
+The deploy manifests include a placeholder Secret named `crd-schema-publisher-cloudflare`. Edit the placeholder values in `common.yaml` directly, or replace the Secret with your own secrets management (e.g., ExternalSecret, Sealed Secret). If the Secret is omitted, both modes run extract-only (schemas written to `OUTPUT_DIR` but not uploaded).
 
 ### Container Image
 
@@ -52,7 +102,7 @@ Pre-built multi-arch images (amd64 + arm64) are published to GHCR:
 ghcr.io/sholdee/crd-schema-publisher:latest
 ```
 
-Each push to `main` with application code changes creates a GitHub Release with a date-based tag (`vYYYY.MMDD.HHMMSS`) and auto-generated release notes including the image digest. PR builds get `pr-N` tags for testing.
+Each push to `main` with application code changes creates a GitHub Release with a date-based tag (`vYYYY.MDD.HMMSS` — e.g. `v2026.413.65435`) and auto-generated release notes including the image digest. PR builds get `pr-N` tags for testing.
 
 Images use `gcr.io/distroless/static:nonroot` as the runtime base — no shell, no package manager, runs as UID 65534. Production images are signed with [cosign](https://docs.sigstore.dev/cosign/overview/) keyless signing via GitHub Actions OIDC:
 
@@ -98,7 +148,7 @@ In watch mode, the health server exposes a `/metrics` endpoint on `HEALTH_PORT` 
 
 The watchdog timestamp enables dead man's switch alerting — it updates on every debounce loop tick (regardless of whether a publish occurs), so `time() - crdpublisher_watchdog_timestamp` staying fresh proves the watcher is alive. The publish timestamp separately tracks when content was last pushed.
 
-To scrape with [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator), create a PodMonitor:
+The Helm chart includes a PodMonitor — enable it with `--set metrics.podMonitor.enabled=true`. For raw manifests or vanilla Prometheus Operator, create a PodMonitor:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -153,6 +203,8 @@ kubeconform \
   -schema-location 'https://kube-schemas.example.com/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
   manifests/*.yaml
 ```
+
+This project validates its own Helm chart manifests against its published schema registry in CI — see the `helm-lint` job in [`.github/workflows/ci.yaml`](.github/workflows/ci.yaml) for a working example.
 
 This validates built-in Kubernetes resources against the default schemas and CRDs against your published schemas.
 
