@@ -52,6 +52,17 @@
     },
     {
       customType: 'regex',
+      description: ['Process govulncheck version in CI workflows'],
+      managerFilePatterns: ['/\\.github/workflows/.*\\.ya?ml$/'],
+      matchStrings: [
+        'go install golang\\.org/x/vuln/cmd/govulncheck@v(?<currentValue>[\\d.]+)',
+      ],
+      depNameTemplate: 'golang/vuln',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+    },
+    {
+      customType: 'regex',
       description: ['Process npx tool versions in CI workflows'],
       managerFilePatterns: ['/\\.github/workflows/.*\\.ya?ml$/'],
       matchStrings: [
