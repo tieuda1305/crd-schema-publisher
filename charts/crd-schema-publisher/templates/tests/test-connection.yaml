@@ -1,0 +1,18 @@
+{{- if eq .Values.mode "controller" -}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "crd-schema-publisher.fullname" . }}-test
+  labels:
+    {{- include "crd-schema-publisher.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  containers:
+    - name: wget
+      image: busybox:1.37.0@sha256:1487d0af5f52b4ba31c7e465126ee2123fe3f2305d638e7827681e7cf6c83d5e
+      command: ['wget']
+      args: ['--spider', '--timeout=5', '{{ include "crd-schema-publisher.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.config.healthPort }}/healthz']
+  restartPolicy: Never
+{{- end }}

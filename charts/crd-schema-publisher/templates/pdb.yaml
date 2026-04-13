@@ -1,0 +1,17 @@
+{{- if and .Values.podDisruptionBudget.enabled (eq .Values.mode "controller") -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "crd-schema-publisher.fullname" . }}
+  labels:
+    {{- include "crd-schema-publisher.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- else }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable | default 1 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "crd-schema-publisher.selectorLabels" . | nindent 6 }}
+{{- end }}

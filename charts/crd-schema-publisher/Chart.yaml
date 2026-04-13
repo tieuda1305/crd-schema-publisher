@@ -1,0 +1,20 @@
+apiVersion: v2
+name: crd-schema-publisher
+description: Extracts CRD JSON schemas from Kubernetes and publishes them to Cloudflare Pages
+type: application
+# version and appVersion are placeholder values — both are overridden at publish
+# time by the helm-package CI job and are never used in published artifacts.
+version: 0.0.0
+appVersion: "v0.0.0"
+icon: https://raw.githubusercontent.com/sholdee/crd-schema-publisher/main/charts/crd-schema-publisher/icon.svg
+home: https://github.com/sholdee/crd-schema-publisher
+sources:
+  - https://github.com/sholdee/crd-schema-publisher
+maintainers:
+  - name: sholdee
+keywords:
+  - kubernetes
+  - crd
+  - json-schema
+  - cloudflare-pages
+  - schema

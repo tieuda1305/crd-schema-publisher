@@ -40,7 +40,7 @@ subjects:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: cloudflare-credentials
+  name: crd-schema-publisher-cloudflare
   namespace: crd-schema-publisher
 stringData:
   CLOUDFLARE_API_TOKEN: "<your-cloudflare-api-token>"

@@ -7,6 +7,7 @@ A statically-compiled Go binary that extracts CRD JSON schemas from a Kubernetes
 ## Repository Layout
 
 ```text
+charts/         Helm chart (OCI-distributed via GHCR, cosign-signed)
 cmd/            Entrypoint and subcommand dispatch (run/extract/upload/watch/preview)
 converter/      OpenAPI v3 -> JSON Schema transforms (ported from openapi2jsonschema.py)
 extractor/      client-go CRD listing, schema extraction, file writing, config builder
@@ -88,6 +89,7 @@ go run ./cmd/ preview
 - **Image signing** uses cosign keyless mode via GitHub OIDC. Production images on main are signed; PR images are not. Base images (golang, distroless) are verified before every build.
 - **Supply chain hardening**: all GitHub Actions pinned by commit SHA (not version tag), Dockerfile base images pinned by digest, `go mod verify` runs in CI.
 - **Prometheus metrics** use stdlib-only text exposition format (no `prometheus/client_golang` dependency). Atomic counters and gauges in `metrics/` package, served at `/metrics` on the health server port. Metrics are always registered in watch mode — zero overhead when not scraped. Recording methods are nil-receiver safe so callers don't need nil checks. Float gauges use `math.Float64bits`/`math.Float64frombits` with `atomic.Int64` for lock-free storage.
+- **Helm chart** in `charts/crd-schema-publisher/` distributed as OCI artifact via GHCR. Two modes (`controller`/`cronjob`) with mode-isolated templates. Two-tier secret management: `existingSecret` (production), `externalSecret` (ESO). `values.schema.json` enforces at least one secret source. Chart version is CalVer SemVer: `YYYY.MDD.HMMSS` (no leading zeros on month or hour — e.g. `2026.413.65435`). On app changes, `appVersion` aligns with the new image tag. On chart-only changes, `appVersion` is fetched from the GitHub releases API so it always points to a real, pullable image (fails fast if no prior app release exists). `Chart.yaml` version/appVersion fields are placeholder `0.0.0` — both overridden by CI at package time. Dashboard embedded via `.Files.Get`. Pod anti-affinity presets in `_helpers.tpl`.
 
 ### Dependencies (direct only)
 
@@ -103,23 +105,25 @@ No other external dependencies. Standard library for HTTP, JSON, HTML templates,
 
 ### Pipeline Architecture (`.github/workflows/ci.yaml`)
 
-Single workflow triggered on PRs to `main` and pushes to `main`, with seven conditional jobs:
+Single workflow triggered on PRs to `main` and pushes to `main`, with nine conditional jobs:
 
 | Job | Runs when | Purpose |
 | --- | --------- | ------- |
-| `detect` | Always | `dorny/paths-filter` classifies changes: `app` (Go, go.mod/sum, Dockerfile), `renovate` (config only). |
+| `detect` | Always | `dorny/paths-filter` classifies changes: `app` (Go, go.mod/sum, Dockerfile), `chart` (charts/**), `renovate` (config only). |
 | `test` | Always (safety net — ensures Go code compiles on every PR, even docs-only) | actionlint, markdownlint-cli2, golangci-lint, go mod verify/tidy, go test, go vet |
-| `build` | `app == true` | Multi-arch Docker build (amd64 + arm64), pushes to GHCR. PR: `pr-N` tag. Main: `vYYYY.MMDD.HHMMSS` + `latest`. Verifies distroless base image digest with cosign before building. |
+| `build` | `app == true` | Multi-arch Docker build (amd64 + arm64), pushes to GHCR. PR: `pr-N` tag. Main: `vYYYY.MDD.HMMSS` + `latest`. Verifies distroless base image digest with cosign before building. |
 | `sign` | Push to main | Cosign keyless signing via GitHub OIDC |
 | `release` | Push to main + `app == true` | Creates git tag, GitHub Release with auto-generated notes and image digest |
 | `renovate` | `renovate == true` | Validates `.github/renovate.json5` with `renovate-config-validator --strict` |
+| `helm-lint` | Always | `helm lint`, `helm template` in controller/cronjob/all-features modes, mode isolation checks, schema validation, dashboard JSON embedding, kubeconform against built-in and live CRD schemas |
+| `helm-package` | Push to main + (`chart` or `app` changed) | Package chart with CalVer SemVer. On app change: chart version = image tag, `appVersion` = image tag. On chart-only change: chart version = fresh timestamp, `appVersion` = fetched from GitHub releases API (always a real, pullable image). Fails fast if no prior app release exists. Push OCI to GHCR, cosign sign. |
 | `gate` | Always | Evaluates all job results — only `success` and `skipped` pass. Single required status check for branch protection. |
 
-Build, sign, and release only trigger on application-affecting changes (`app` filter). CI-only changes (e.g., bumping an action SHA, updating linter config) run tests but do not build images.
+Build, sign, and release only trigger on application-affecting changes (`app` filter). CI-only changes (e.g., bumping an action SHA, updating linter config) run tests but do not build images. Helm chart is packaged on any chart or app change to keep chart `appVersion` in sync with image tags.
 
 ### Tags
 
-- **Production:** `vYYYY.MMDD.HHMMSS` (UTC) + `latest` — created on push to main when app code changes
+- **Production:** `vYYYY.MDD.HMMSS` (UTC, no leading zeros on month/hour — e.g. `v2026.413.65435`) + `latest` — created on push to main when app code changes
 - **PR:** `pr-N` — created on every PR with code changes
 
 ### Renovate (`.github/renovate.json5`)
