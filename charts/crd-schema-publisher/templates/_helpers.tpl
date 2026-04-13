@@ -88,6 +88,7 @@ Common environment variables shared by both deployment and cronjob pods.
 Secret refs + config vars that apply to all modes.
 */}}
 {{- define "crd-schema-publisher.commonEnvVars" -}}
+{{- if or .Values.existingSecret.name .Values.externalSecret.enabled }}
 - name: CLOUDFLARE_API_TOKEN
   valueFrom:
     secretKeyRef:
@@ -100,6 +101,7 @@ Secret refs + config vars that apply to all modes.
       key: CLOUDFLARE_ACCOUNT_ID
 - name: CF_PAGES_PROJECT
   value: {{ .Values.config.cfPagesProject | quote }}
+{{- end }}
 - name: OUTPUT_DIR
   value: {{ .Values.config.outputDir | quote }}
 {{- if .Values.config.skipRender }}

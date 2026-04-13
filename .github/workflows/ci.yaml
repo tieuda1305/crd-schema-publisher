@@ -297,11 +297,8 @@ jobs:
 
       - name: Verify schema validation
         run: |
-          if helm template test charts/crd-schema-publisher 2>/dev/null; then
-            echo "ERROR: schema should reject missing secret configuration"
-            exit 1
-          fi
-          echo "Schema correctly rejects missing secret"
+          helm template test charts/crd-schema-publisher > /dev/null
+          echo "Schema accepts no secret (extract-only mode)"
 
           if helm template test charts/crd-schema-publisher --set existingSecret.name=s --set externalSecret.enabled=true 2>/dev/null; then
             echo "ERROR: schema should reject both secret options set simultaneously"
