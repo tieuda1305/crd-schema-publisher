@@ -54,7 +54,22 @@
           "description": "Create an ExternalSecret resource"
         }
       }
-    }
+    },
+    "persistence": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Use a PVC for the output directory" },
+        "existingClaim": { "type": "string", "description": "Name of an existing PVC" },
+        "storageClass": { "type": "string", "description": "Storage class name" },
+        "accessModes": { "type": "array", "items": { "type": "string" }, "description": "PVC access modes" },
+        "size": { "type": "string", "description": "PVC storage size" },
+        "annotations": { "type": "object", "description": "PVC annotations" },
+        "labels": { "type": "object", "description": "PVC labels" }
+      }
+    },
+    "extraVolumes": { "type": "array", "description": "Additional volumes" },
+    "extraVolumeMounts": { "type": "array", "description": "Additional volume mounts" },
+    "extraContainers": { "type": "array", "description": "Additional containers" }
   },
   "oneOf": [
     {
