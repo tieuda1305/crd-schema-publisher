@@ -2,18 +2,18 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: kubernetes-schemas
+  name: crd-schema-publisher
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: kubernetes-schemas
-  namespace: kubernetes-schemas
+  name: crd-schema-publisher
+  namespace: crd-schema-publisher
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kubernetes-schemas
+  name: crd-schema-publisher
 rules:
   - apiGroups:
       - apiextensions.k8s.io
@@ -27,21 +27,21 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kubernetes-schemas
+  name: crd-schema-publisher
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kubernetes-schemas
+  name: crd-schema-publisher
 subjects:
   - kind: ServiceAccount
-    name: kubernetes-schemas
-    namespace: kubernetes-schemas
+    name: crd-schema-publisher
+    namespace: crd-schema-publisher
 ---
 apiVersion: v1
 kind: Secret
 metadata:
   name: cloudflare-credentials
-  namespace: kubernetes-schemas
+  namespace: crd-schema-publisher
 stringData:
   CLOUDFLARE_API_TOKEN: "<your-cloudflare-api-token>"
   CLOUDFLARE_ACCOUNT_ID: "<your-cloudflare-account-id>"
