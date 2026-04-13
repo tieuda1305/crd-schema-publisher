@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sholdee/crd-schema-publisher/metrics"
 	"github.com/sholdee/crd-schema-publisher/publisher"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -64,7 +65,7 @@ func TestDebounce_CoalescesRapidEvents(t *testing.T) {
 	go debounceLoop(trigger, 100*time.Millisecond, func() error {
 		count.Add(1)
 		return nil
-	}, done)
+	}, nil, done)
 
 	// Send 5 events in rapid succession
 	for range 5 {
@@ -83,6 +84,7 @@ func TestDebounce_CoalescesRapidEvents(t *testing.T) {
 
 func TestDebounce_SkipsWhenPublishInProgress(t *testing.T) {
 	var count atomic.Int32
+	m := metrics.New()
 	trigger := make(chan struct{}, 10)
 	done := make(chan struct{})
 
@@ -91,7 +93,7 @@ func TestDebounce_SkipsWhenPublishInProgress(t *testing.T) {
 		// Simulate slow publish
 		time.Sleep(300 * time.Millisecond)
 		return nil
-	}, done)
+	}, m, done)
 
 	// First event triggers publish
 	trigger <- struct{}{}
@@ -108,6 +110,14 @@ func TestDebounce_SkipsWhenPublishInProgress(t *testing.T) {
 	// Only 1 publish should have run (second was skipped)
 	if c := count.Load(); c != 1 {
 		t.Fatalf("expected 1 publish cycle (second skipped), got %d", c)
+	}
+
+	// Verify skip was recorded in metrics
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/metrics", nil)
+	m.Handler().ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), "crdpublisher_publish_skipped_total 1") {
+		t.Fatalf("expected publish_skipped_total=1 in:\n%s", rec.Body.String())
 	}
 }
 
@@ -126,7 +136,7 @@ func TestDebounce_DrainsInFlightPublishOnShutdown(t *testing.T) {
 			// Simulate slow publish
 			time.Sleep(500 * time.Millisecond)
 			return nil
-		}, done)
+		}, nil, done)
 	}()
 
 	// Trigger a publish
@@ -246,6 +256,62 @@ func TestPublishCycle_UploadError(t *testing.T) {
 	}
 	if got := err.Error(); !strings.Contains(got, "publishing") {
 		t.Fatalf("expected error containing 'publishing', got: %s", got)
+	}
+}
+
+// --- metrics integration tests ---
+
+func TestHealthServer_MetricsEndpoint(t *testing.T) {
+	m := metrics.New()
+	m.RecordPublishCycle(2*time.Second, nil)
+	m.RecordDiscovery(5, 12)
+	m.SetLeader(true)
+
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", m.Handler())
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/metrics")
+	if err != nil {
+		t.Fatalf("GET /metrics: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "text/plain") {
+		t.Fatalf("unexpected Content-Type: %s", ct)
+	}
+}
+
+func TestPublishCycle_RecordsMetrics(t *testing.T) {
+	t.Setenv("SKIP_RENDER", "true")
+	dir := t.TempDir()
+	m := metrics.New()
+
+	cfg := Config{
+		OutputDir: dir,
+		CRDLister: &fakeLister{crds: []apiextensionsv1.CustomResourceDefinition{testCRD()}},
+		Metrics:   m,
+	}
+
+	if err := publishCycle(cfg); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify metrics were recorded
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/metrics", nil)
+	m.Handler().ServeHTTP(rec, req)
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "crdpublisher_crds_discovered 1") {
+		t.Errorf("expected crds_discovered=1 in:\n%s", body)
+	}
+	if !strings.Contains(body, `crdpublisher_publish_cycle_total{result="success"} 1`) {
+		t.Errorf("expected success=1 in:\n%s", body)
 	}
 }
 

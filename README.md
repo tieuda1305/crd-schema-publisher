@@ -81,6 +81,24 @@ All configuration is via environment variables. Variables marked *(watch)* apply
 | `PREVIEW_ADDR` | No | `127.0.0.1:8989` | Listen address for preview server (preview mode) |
 | `SKIP_RENDER` | No | — | Set to `true` to skip HTML schema page rendering |
 
+### Monitoring
+
+In watch mode, the health server exposes a `/metrics` endpoint on `HEALTH_PORT` (default 8080) in Prometheus text format. The deployment manifest includes `prometheus.io/*` annotations for automatic scraping.
+
+Exposed metrics:
+
+| Metric | Type | Description |
+| ------ | ---- | ----------- |
+| `crdpublisher_publish_cycle_duration_seconds` | gauge | Duration of the most recent publish cycle |
+| `crdpublisher_publish_cycle_total` | counter | Publish cycles by result (`success`, `error`) |
+| `crdpublisher_crds_discovered` | gauge | CRDs found in the most recent cycle |
+| `crdpublisher_schemas_written` | gauge | Schemas written in the most recent cycle |
+| `crdpublisher_last_successful_publish_timestamp` | gauge | Unix epoch of the last successful publish |
+| `crdpublisher_publish_skipped_total` | counter | Debounce skips (publish already in progress) |
+| `crdpublisher_leader` | gauge | Whether this pod is the current leader |
+
+The timestamp metric enables dead man's switch alerting — if `time() - crdpublisher_last_successful_publish_timestamp` exceeds your threshold, the process may be stuck.
+
 ## 📋 Using Your Schemas
 
 Once published, your schemas are available at `https://<your-pages-domain>/<apigroup>/<kind>_<version>.json`. The published site also includes a browsable index with search and interactive HTML documentation for each schema.

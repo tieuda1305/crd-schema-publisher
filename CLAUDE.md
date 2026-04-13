@@ -14,7 +14,8 @@ index/          HTML index generation (deepspace theme, client-side search, star
 publisher/      Cloudflare Pages direct upload API client + BLAKE3 hashing
 renderer/       HTML schema page renderer (collapsible property trees, type badges, constraints)
 theme/          Shared CSS/HTML/JS constants (deepspace theme, starfield, flare, toggle, toast, footer)
-watcher/        CRD informer watch loop, debounce, leader election, health server
+metrics/        Prometheus metrics (stdlib-only, atomic counters/gauges, text exposition format)
+watcher/        CRD informer watch loop, debounce, leader election, health server, metrics wiring
 ```
 
 ## Build & Test
@@ -86,6 +87,7 @@ go run ./cmd/ preview
 - **Linting** uses golangci-lint with strict linters (gocritic, gocyclo, misspell, prealloc, nolintlint) plus defaults. Config in `.golangci.yml`. Pre-commit hook in `.githooks/pre-commit`.
 - **Image signing** uses cosign keyless mode via GitHub OIDC. Production images on main are signed; PR images are not. Base images (golang, distroless) are verified before every build.
 - **Supply chain hardening**: all GitHub Actions pinned by commit SHA (not version tag), Dockerfile base images pinned by digest, `go mod verify` runs in CI.
+- **Prometheus metrics** use stdlib-only text exposition format (no `prometheus/client_golang` dependency). Atomic counters and gauges in `metrics/` package, served at `/metrics` on the health server port. Metrics are always registered in watch mode — zero overhead when not scraped. Recording methods are nil-receiver safe so callers don't need nil checks. Float gauges use `math.Float64bits`/`math.Float64frombits` with `atomic.Int64` for lock-free storage.
 
 ### Dependencies (direct only)
 
