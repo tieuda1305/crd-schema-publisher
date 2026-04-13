@@ -87,9 +87,26 @@ spec:
           volumeMounts:
             - name: output
               mountPath: {{ .Values.config.outputDir }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- tpl (toYaml .) $ | nindent 12 }}
+            {{- end }}
+      {{- with .Values.extraContainers }}
+      {{- tpl (toYaml .) $ | nindent 8 }}
+      {{- end }}
       volumes:
         - name: output
+          {{- if .Values.persistence.existingClaim }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim }}
+          {{- else if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "crd-schema-publisher.fullname" . }}
+          {{- else }}
           emptyDir: {}
+          {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- tpl (toYaml .) $ | nindent 8 }}
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

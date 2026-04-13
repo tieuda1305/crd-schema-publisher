@@ -269,6 +269,39 @@ ciliumNetworkPolicy:
   extraIngress: []
 
 # ---------------------------------------------------------------------------
+# Persistence (output directory volume)
+# ---------------------------------------------------------------------------
+persistence:
+  # -- Use a PersistentVolumeClaim for the output directory instead of emptyDir
+  enabled: false
+  # -- Use an existing PVC (skips PVC creation when set)
+  existingClaim: ""
+  # -- Storage class ("" = cluster default, "-" = no dynamic provisioning)
+  storageClass: ""
+  # -- Access modes for the PVC
+  accessModes:
+    - ReadWriteOnce
+  # -- Storage size
+  size: 1Gi
+  # -- Additional annotations on the PVC
+  annotations: {}
+  # -- Additional labels on the PVC
+  labels: {}
+
+# ---------------------------------------------------------------------------
+# Extra pod customization
+# ---------------------------------------------------------------------------
+
+# -- Additional volumes to add to pods (supports Go templating)
+extraVolumes: []
+
+# -- Additional volume mounts to add to the main container (supports Go templating)
+extraVolumeMounts: []
+
+# -- Additional containers to add to pods (supports Go templating)
+extraContainers: []
+
+# ---------------------------------------------------------------------------
 # Extra objects
 # ---------------------------------------------------------------------------
 
