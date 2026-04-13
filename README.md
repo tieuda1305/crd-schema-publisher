@@ -1,12 +1,15 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/sholdee/crd-schema-publisher)](https://goreportcard.com/report/github.com/sholdee/crd-schema-publisher)
 [![CI](https://github.com/sholdee/crd-schema-publisher/actions/workflows/ci.yaml/badge.svg)](https://github.com/sholdee/crd-schema-publisher/actions/workflows/ci.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/sholdee/crd-schema-publisher)](go.mod)
 
 # crd-schema-publisher
 
-Extracts CRD JSON schemas from a Kubernetes cluster and publishes them to a Cloudflare Pages website. Runs as a Kubernetes Deployment (watch mode) or CronJob in a distroless nonroot container.
+Extracts CRD JSON schemas from a Kubernetes cluster and publishes them to a Cloudflare Pages site you control. Runs as a Kubernetes Deployment or CronJob in a distroless nonroot container. Designed for IDE validation, CI linting, and interactive schema documentation.
 
-## Why
+**[Live demo →](https://kube-schemas.shold.io)**
+
+## 💡 Why
 
 Most CRD schema solutions rely on static catalogs — community-maintained repositories that scrape schemas from popular Helm charts. Schemas go stale, internal CRDs are missing, and your validation pipeline depends on third-party infrastructure.
 
@@ -17,33 +20,51 @@ This tool reads schemas directly from your cluster's API server and publishes th
 - **Single static binary** — no runtime dependencies, no interpreters, no package managers. One binary in a distroless nonroot container with no shell
 - **Kubernetes-native** — watch mode uses the controller pattern with informers, leader election, debounced publish cycles, and health probes. It's a proper workload, not a script on a timer
 
-The JSON Schema conversion improves on the widely-used [openapi2jsonschema.py](https://github.com/yannh/kubeconform/blob/master/scripts/openapi2jsonschema.py) transforms with three correctness fixes: per-field nullable precision (rather than per-parent), preservation of existing schema keys during int-or-string replacement, and suppression of nonsensical nullable on root objects and array items. A frozen golden test locks this output to prevent regressions.
+The JSON Schema conversion improves upon the widely-used [openapi2jsonschema.py](https://github.com/yannh/kubeconform/blob/master/scripts/openapi2jsonschema.py) — see [How It Works](#%EF%B8%8F-how-it-works) for details.
 
-## Features
+## 🚀 Deploying
 
-- Extracts OpenAPI v3 schemas from all CustomResourceDefinitions in a cluster
-- Converts to standard JSON Schema with improved transforms over [openapi2jsonschema.py](https://github.com/yannh/kubeconform/blob/master/scripts/openapi2jsonschema.py)
-- Renders interactive HTML documentation pages for each schema with collapsible property trees, type badges, and constraints
-- Generates a browsable HTML index page with search, dark/light mode, and visual effects inspired by the Scalar deepspace theme
-- Uploads directly to Cloudflare Pages using the direct upload API
-- Creates the CF Pages project automatically if it doesn't exist
-- Produces kubeval-compatible output in `master-standalone/` directory
-- Zero external runtime dependencies — single static binary in a distroless container
+### Watch Mode (recommended)
 
-## Usage
+Reacts to CRD changes in real-time with debounced publish cycles. Supports leader election for safe rolling updates. The container runs with `args: ["watch"]` — see [`deploy/deployment.yaml`](deploy/deployment.yaml).
 
-```text
-crd-schema-publisher [command]
-
-Commands:
-  run       Extract schemas and upload to Cloudflare Pages (default)
-  extract   Extract schemas and generate index to OUTPUT_DIR
-  upload    Upload OUTPUT_DIR contents to Cloudflare Pages
-  watch     Watch for CRD changes and publish on each change (long-lived)
-  preview   Generate index with sample data and serve locally for UI development
+```bash
+kubectl apply -f deploy/common.yaml -f deploy/deployment.yaml
 ```
 
-### Environment Variables
+### CronJob Mode
+
+Runs extract + upload on a schedule. Simpler, but schemas are only updated when the job runs. The example uses a daily schedule — adjust the `schedule` field as needed. Uses the default `run` command — see [`deploy/cronjob.yaml`](deploy/cronjob.yaml).
+
+```bash
+kubectl apply -f deploy/common.yaml -f deploy/cronjob.yaml
+```
+
+Both modes share [`deploy/common.yaml`](deploy/common.yaml) which provides namespace, ServiceAccount, RBAC (ClusterRole for CRD read access), and a hardened security context (nonroot, read-only rootfs, dropped capabilities).
+
+The deploy manifests include a placeholder Secret named `cloudflare-credentials`. To provide your Cloudflare credentials, either edit the placeholder values in `common.yaml` directly before applying, or replace the Secret resource with your own secrets management (e.g., ExternalSecret, Sealed Secret). If the Secret is omitted, both modes run extract-only (schemas written to `OUTPUT_DIR` but not uploaded).
+
+### Container Image
+
+Pre-built multi-arch images (amd64 + arm64) are published to GHCR:
+
+```text
+ghcr.io/sholdee/crd-schema-publisher:latest
+```
+
+Each push to `main` with application code changes creates a GitHub Release with a date-based tag (`vYYYY.MMDD.HHMMSS`) and auto-generated release notes including the image digest. PR builds get `pr-N` tags for testing.
+
+Images use `gcr.io/distroless/static:nonroot` as the runtime base — no shell, no package manager, runs as UID 65534. Production images are signed with [cosign](https://docs.sigstore.dev/cosign/overview/) keyless signing via GitHub Actions OIDC:
+
+```bash
+cosign verify ghcr.io/sholdee/crd-schema-publisher:latest \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp github.com/sholdee/crd-schema-publisher
+```
+
+### Configuration
+
+All configuration is via environment variables. Variables marked *(watch)* apply only to watch mode deployment.
 
 | Variable | Required | Default | Description |
 | -------- | -------- | ------- | ----------- |
@@ -60,89 +81,47 @@ Commands:
 | `PREVIEW_ADDR` | No | `127.0.0.1:8989` | Listen address for preview server (preview mode) |
 | `SKIP_RENDER` | No | — | Set to `true` to skip HTML schema page rendering |
 
-### Run in Kubernetes
+## 📋 Using Your Schemas
 
-Two deployment modes are available:
+Once published, your schemas are available at `https://<your-pages-domain>/<apigroup>/<kind>_<version>.json`. The published site also includes a browsable index with search and interactive HTML documentation for each schema.
 
-**Watch mode (recommended)** — reacts to CRD changes in real-time with debounced publish cycles. Supports leader election for safe rolling updates.
+### IDE Validation (yaml-language-server)
+
+Add a modeline to any YAML file. Works in VS Code, Neovim, Helix, and any editor with yaml-language-server:
+
+```yaml
+# yaml-language-server: $schema=https://kube-schemas.example.com/cert-manager.io/certificate_v1.json
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: example
+```
+
+Or configure schemas globally in VS Code:
+
+```jsonc
+// .vscode/settings.json
+{
+  "yaml.schemas": {
+    "https://kube-schemas.example.com/cert-manager.io/certificate_v1.json": ["**/certificates/*.yaml"]
+  }
+}
+```
+
+### CI Validation (kubeconform)
+
+Point kubeconform at your schema registry for CRD validation in CI:
 
 ```bash
-kubectl apply -f deploy/common.yaml -f deploy/deployment.yaml
+kubeconform \
+  -schema-location default \
+  -schema-location 'https://kube-schemas.example.com/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+  manifests/*.yaml
 ```
 
-**CronJob mode** — runs on a daily schedule. Simpler, but schemas are only updated once per day.
+This validates built-in Kubernetes resources against the default schemas and CRDs against your published schemas.
 
-```bash
-kubectl apply -f deploy/common.yaml -f deploy/cronjob.yaml
-```
-
-Both modes include:
-
-- Namespace, ServiceAccount, RBAC (ClusterRole for CRD read access)
-- Secret placeholder for Cloudflare credentials
-- Hardened security context (nonroot, read-only rootfs, dropped capabilities)
-
-If Cloudflare credentials are omitted, both modes run extract-only (schemas written to `OUTPUT_DIR` but not uploaded).
-
-### Preview the Index UI
-
-No cluster or credentials required — serves sample data on localhost:
-
-```bash
-go run ./cmd/ preview
-# open http://127.0.0.1:8989
-
-# Or preview with real extracted schemas
-OUTPUT_DIR=./output go run ./cmd/ preview
-```
-
-### Run Locally
-
-```bash
-# Extract schemas from a local cluster (no upload)
-KUBECTL_CONTEXT=my-cluster OUTPUT_DIR=./output go run ./cmd/ extract
-
-# Full run with upload
-KUBECTL_CONTEXT=my-cluster \
-  CLOUDFLARE_API_TOKEN=xxx \
-  CLOUDFLARE_ACCOUNT_ID=xxx \
-  go run ./cmd/
-```
-
-## Container Image
-
-Pre-built multi-arch images (amd64 + arm64) are published to GHCR on every push to `main`:
-
-```text
-ghcr.io/sholdee/crd-schema-publisher:latest
-```
-
-Each push to `main` with application code changes creates a GitHub Release with a date-based tag (`vYYYY.MMDD.HHMMSS`) and auto-generated release notes including the image digest. PR builds get `pr-N` tags for testing.
-
-Images use `gcr.io/distroless/static:nonroot` as the runtime base — no shell, no package manager, runs as UID 65534.
-
-### Image Verification
-
-Production images are signed with [cosign](https://docs.sigstore.dev/cosign/overview/) keyless signing via GitHub Actions OIDC. Verify any image:
-
-```bash
-cosign verify ghcr.io/sholdee/crd-schema-publisher:latest \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp github.com/sholdee/crd-schema-publisher
-```
-
-## Build
-
-```bash
-# Native build
-go build -o crd-schema-publisher ./cmd/
-
-# Static cross-compile (matches CI)
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o crd-schema-publisher ./cmd/
-
-# Docker (multi-arch)
-docker buildx build --platform linux/amd64,linux/arm64 -t crd-schema-publisher .
-```
+> **Note:** Schema files are written as lowercase (e.g., `certificate_v1.json`) while `{{.ResourceKind}}` expands to the original case (e.g., `Certificate`). This works on Cloudflare Pages because it serves paths case-insensitively — the same convention used by [datreeio/CRDs-catalog](https://github.com/datreeio/CRDs-catalog). If serving schemas from a case-sensitive host, use lowercase kind names in your template paths.
 
 ## Output Structure
 
@@ -157,7 +136,18 @@ docker buildx build --platform linux/amd64,linux/arm64 -t crd-schema-publisher .
   favicon.svg                      # Constellation icon
 ```
 
-## How It Works
+## ⚙️ How It Works
+
+```text
+crd-schema-publisher [command]
+
+Commands:
+  run       Extract schemas and upload to Cloudflare Pages (default)
+  extract   Extract schemas and generate index to OUTPUT_DIR
+  upload    Upload OUTPUT_DIR contents to Cloudflare Pages
+  watch     Watch for CRD changes and publish on each change (long-lived)
+  preview   Generate index with sample data and serve locally for UI development
+```
 
 1. Connects to the Kubernetes API (in-cluster or via kubeconfig)
 2. Lists all CRDs and extracts `.spec.versions[].schema.openAPIV3Schema`
@@ -165,28 +155,56 @@ docker buildx build --platform linux/amd64,linux/arm64 -t crd-schema-publisher .
    - Adds `additionalProperties: false` to objects with `properties`
    - Replaces `int-or-string` format with `oneOf [string, integer]` while preserving existing keys
    - Allows null for optional fields (per-field precision, not per-parent)
+
+   These improve on the Python original's handling of nullable fields, int-or-string types, and root objects. A frozen golden test locks converter output to prevent regressions.
 4. Writes schemas to both primary and kubeval-compatible directory formats
 5. Renders an interactive HTML documentation page for each schema with collapsible property trees
-6. Generates an HTML index grouped by API group with client-side search, stats, and yaml-language-server usage examples
+6. Generates an HTML index grouped by API group with client-side search, schema statistics, and yaml-language-server usage examples
 7. Uploads to Cloudflare Pages via the direct upload API (BLAKE3 content hashing, batched uploads with retry)
 
-## Development
+## 🔧 Development
+
+### Run Locally
+
+```bash
+# Preview the index UI (no cluster or credentials needed)
+go run ./cmd/ preview
+# open http://127.0.0.1:8989
+
+# Preview with real extracted schemas
+OUTPUT_DIR=./output go run ./cmd/ preview
+
+# Extract schemas from a local cluster (no upload)
+KUBECTL_CONTEXT=my-cluster OUTPUT_DIR=./output go run ./cmd/ extract
+
+# Full run with upload
+KUBECTL_CONTEXT=my-cluster \
+  CLOUDFLARE_API_TOKEN=xxx \
+  CLOUDFLARE_ACCOUNT_ID=xxx \
+  go run ./cmd/
+```
+
+### Build
+
+```bash
+# Native build
+go build -o crd-schema-publisher ./cmd/
+
+# Static cross-compile (matches CI)
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o crd-schema-publisher ./cmd/
+
+# Docker (multi-arch)
+docker buildx build --platform linux/amd64,linux/arm64 -t crd-schema-publisher .
+```
 
 ### Linting
 
-This project uses [golangci-lint](https://golangci-lint.run/) with strict linters enabled. Install it:
+This project uses [golangci-lint](https://golangci-lint.run/) with strict linters enabled:
 
 ```bash
 go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-```
-
-Run manually:
-
-```bash
 golangci-lint run
 ```
-
-### Pre-Commit Hook
 
 Enable the pre-commit hook to enforce linting before each commit:
 
@@ -200,12 +218,9 @@ Dependencies are managed by [Renovate](https://docs.renovatebot.com/). Minor and
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full contributor setup and guidelines.
 
-## Community
+## 👥 Community
 
+- [Home Operations Discord](https://discord.gg/home-operations)
 - [Contributing](CONTRIBUTING.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Security Policy](SECURITY.md)
-
-## License
-
-MIT
