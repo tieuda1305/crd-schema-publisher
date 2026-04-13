@@ -39,7 +39,9 @@ This installs in **controller mode** by default (real-time watch with leader ele
 
 #### Credentials
 
-Publishing requires a Cloudflare API token with **Cloudflare Pages: Edit** permission and your account ID. Two secret management options are supported:
+Cloudflare credentials are **optional**. Without them, the chart runs in extract-only mode — schemas are written to the output directory but not uploaded. This is useful when serving schemas locally (e.g., via an nginx sidecar) instead of Cloudflare Pages.
+
+To publish to Cloudflare Pages, provide an API token with **Cloudflare Pages: Edit** permission and your account ID. Two secret management options are supported:
 
 - **`existingSecret`** — reference a pre-existing Secret containing `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
 - **`externalSecret`** — create an [ExternalSecret](https://external-secrets.io) CR that syncs credentials from an external provider (Vault, AWS Secrets Manager, 1Password, etc.)
@@ -58,7 +60,7 @@ The default remote ref points to a `crd-schema-publisher-cloudflare` key with `a
 
 #### Optional features
 
-PodMonitor, PrometheusRule, Grafana dashboard (sidecar ConfigMap), NetworkPolicy, CiliumNetworkPolicy, PodDisruptionBudget, pod anti-affinity presets, topology spread constraints, and templated extra objects. See [`values.yaml`](charts/crd-schema-publisher/values.yaml) for all options.
+Persistent output volume (`persistence`), extra volumes/volume mounts/containers (`extraVolumes`, `extraVolumeMounts`, `extraContainers`), PodMonitor, PrometheusRule, Grafana dashboard (sidecar ConfigMap), NetworkPolicy, CiliumNetworkPolicy, PodDisruptionBudget, pod anti-affinity presets, topology spread constraints, and templated extra objects. See [`values.yaml`](charts/crd-schema-publisher/values.yaml) for all options.
 
 #### Verification
 
@@ -232,7 +234,7 @@ Commands:
   run       Extract schemas and upload to Cloudflare Pages (default)
   extract   Extract schemas and generate index to OUTPUT_DIR
   upload    Upload OUTPUT_DIR contents to Cloudflare Pages
-  watch     Watch for CRD changes and publish on each change (long-lived)
+  watch     Watch for CRD changes and publish on each change (extract-only if no credentials)
   preview   Generate index with sample data and serve locally for UI development
 ```
 

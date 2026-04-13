@@ -115,6 +115,27 @@
           "required": ["enabled"]
         }
       }
+    },
+    {
+      "properties": {
+        "existingSecret": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "maxLength": 0
+            }
+          }
+        },
+        "externalSecret": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "enum": [false]
+            }
+          }
+        }
+      }
     }
   ]
 }
