@@ -3,7 +3,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: crd-schema-publisher-leader-election
-  namespace: kubernetes-schemas
+  namespace: crd-schema-publisher
 rules:
   - apiGroups:
       - coordination.k8s.io
@@ -18,38 +18,34 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: crd-schema-publisher-leader-election
-  namespace: kubernetes-schemas
+  namespace: crd-schema-publisher
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: crd-schema-publisher-leader-election
 subjects:
   - kind: ServiceAccount
-    name: kubernetes-schemas
-    namespace: kubernetes-schemas
+    name: crd-schema-publisher
+    namespace: crd-schema-publisher
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kubernetes-schemas
-  namespace: kubernetes-schemas
+  name: crd-schema-publisher
+  namespace: crd-schema-publisher
 spec:
   replicas: 1
   strategy:
     type: RollingUpdate
   selector:
     matchLabels:
-      app: kubernetes-schemas
+      app: crd-schema-publisher
   template:
     metadata:
       labels:
-        app: kubernetes-schemas
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
-        prometheus.io/path: "/metrics"
+        app: crd-schema-publisher
     spec:
-      serviceAccountName: kubernetes-schemas
+      serviceAccountName: crd-schema-publisher
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534

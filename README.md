@@ -83,9 +83,7 @@ All configuration is via environment variables. Variables marked *(watch)* apply
 
 ### Monitoring
 
-In watch mode, the health server exposes a `/metrics` endpoint on `HEALTH_PORT` (default 8080) in Prometheus text format. The deployment manifest includes `prometheus.io/*` annotations for automatic scraping.
-
-Exposed metrics:
+In watch mode, the health server exposes a `/metrics` endpoint on `HEALTH_PORT` (default 8080) in Prometheus text format.
 
 | Metric | Type | Description |
 | ------ | ---- | ----------- |
@@ -98,6 +96,24 @@ Exposed metrics:
 | `crdpublisher_leader` | gauge | Whether this pod is the current leader |
 
 The timestamp metric enables dead man's switch alerting — if `time() - crdpublisher_last_successful_publish_timestamp` exceeds your threshold, the process may be stuck.
+
+To scrape with [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator), create a PodMonitor:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: crd-schema-publisher
+spec:
+  selector:
+    matchLabels:
+      app: crd-schema-publisher
+  podMetricsEndpoints:
+    - port: health
+      path: /metrics
+```
+
+For vanilla Prometheus, add `prometheus.io/*` annotations to the pod template or configure a static scrape target.
 
 ## 📋 Using Your Schemas
 

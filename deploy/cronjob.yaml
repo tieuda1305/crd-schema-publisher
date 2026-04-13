@@ -2,8 +2,8 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: kubernetes-schemas
-  namespace: kubernetes-schemas
+  name: crd-schema-publisher
+  namespace: crd-schema-publisher
 spec:
   schedule: "0 3 * * *"
   successfulJobsHistoryLimit: 1
@@ -13,7 +13,7 @@ spec:
       activeDeadlineSeconds: 1800
       template:
         spec:
-          serviceAccountName: kubernetes-schemas
+          serviceAccountName: crd-schema-publisher
           restartPolicy: OnFailure
           securityContext:
             runAsNonRoot: true
