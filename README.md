@@ -2,6 +2,7 @@
 [![CI](https://github.com/sholdee/crd-schema-publisher/actions/workflows/ci.yaml/badge.svg)](https://github.com/sholdee/crd-schema-publisher/actions/workflows/ci.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/sholdee/crd-schema-publisher)](go.mod)
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/crd-schema-publisher)](https://artifacthub.io/packages/helm/crd-schema-publisher/crd-schema-publisher)
 
 # crd-schema-publisher
 
