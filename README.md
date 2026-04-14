@@ -4,9 +4,9 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/sholdee/crd-schema-publisher)](go.mod)
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/crd-schema-publisher)](https://artifacthub.io/packages/helm/crd-schema-publisher/crd-schema-publisher)
 
-# crd-schema-publisher
+# crd-schema-publisher — CRD docs and IDE validation, straight from the cluster
 
-Extracts CRD JSON schemas from a Kubernetes cluster and publishes them to a Cloudflare Pages site you control. Runs as a Kubernetes Deployment or CronJob in a distroless nonroot container. Designed for IDE validation, CI linting, and interactive schema documentation.
+Reads CRD JSON schemas directly from your Kubernetes API server and publishes a browsable documentation site with search and interactive schema pages. Runs as a Kubernetes-native controller with real-time CRD watching, or as a CronJob for scheduled extraction. Exports schemas for IDE validation (yaml-language-server) and CI linting (kubeconform). Cloudflare Pages is the built-in backend; S3, git repos, and local serving supported via sidecar.
 
 **[Live demo →](https://kube-schemas.shold.io)**
 
@@ -14,12 +14,11 @@ Extracts CRD JSON schemas from a Kubernetes cluster and publishes them to a Clou
 
 Most CRD schema solutions rely on static catalogs — community-maintained repositories that scrape schemas from popular Helm charts. Schemas go stale, internal CRDs are missing, and your validation pipeline depends on third-party infrastructure.
 
-This tool reads schemas directly from your cluster's API server and publishes them to infrastructure you control.
-
 - **Always accurate** — schemas reflect exactly what's installed in your cluster, including custom and internal CRDs, updated automatically when CRDs change
-- **Self-hosted** — published to your own Cloudflare Pages site, or run in extract-only mode and serve schemas however you like (Caddy, nginx, S3 sync, rclone — any sidecar that reads files from a directory)
+- **Self-hosted** — run in extract-only mode and serve schemas however you like, or publish directly to Cloudflare Pages
 - **Single static binary** — no runtime dependencies, no interpreters, no package managers. One binary in a distroless nonroot container with no shell
-- **Kubernetes-native** — watch mode uses the controller pattern with informers, leader election, debounced publish cycles, and health probes. It's a proper workload, not a script on a timer
+- **Controller-grade runtime** — watch mode uses informers, leader election, debounced publish cycles, and health probes. It's a proper workload, not a script on a timer
+- **No glue pipelines** — replaces multi-tool chains (CI runners, shell scripts, kubectl, CLI wrappers) with a single in-cluster binary. No external CI dependency, no cluster-admin runner pods, no scheduled workflow orchestration
 
 The JSON Schema conversion improves upon the widely-used [openapi2jsonschema.py](https://github.com/yannh/kubeconform/blob/master/scripts/openapi2jsonschema.py) — see [How It Works](#%EF%B8%8F-how-it-works) for details.
 
