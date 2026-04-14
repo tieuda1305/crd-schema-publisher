@@ -1,3 +1,6 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/sholdee/crd-schema-publisher/refs/heads/main/charts/crd-schema-publisher/values.schema.json
+#
 # git-push sidecar example — push CRD schemas to a GitHub repository
 #
 # This example runs crd-schema-publisher in extract-only mode (no Cloudflare
@@ -88,9 +91,9 @@ extraContainers:
             name: '{{ include "crd-schema-publisher.fullname" . }}-git-push'
             key: github-repo
       - name: GIT_BRANCH
-        value: "gh-pages"  # Change if your Pages branch differs
+        value: "gh-pages" # Change if your Pages branch differs
       - name: HOME
-        value: "/home/git"  # Writable home for .gitconfig
+        value: "/home/git" # Writable home for .gitconfig
     volumeMounts:
       - name: output
         mountPath: /data

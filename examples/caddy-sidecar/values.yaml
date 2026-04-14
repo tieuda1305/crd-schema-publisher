@@ -1,3 +1,6 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/sholdee/crd-schema-publisher/refs/heads/main/charts/crd-schema-publisher/values.schema.json
+#
 # Caddy sidecar example — serve CRD schemas locally without Cloudflare
 #
 # This example runs crd-schema-publisher in extract-only mode (no Cloudflare
@@ -103,7 +106,7 @@ extraObjects:
     spec:
       selector:
         app.kubernetes.io/name: '{{ include "crd-schema-publisher.name" . }}'
-        app.kubernetes.io/instance: '{{ .Release.Name }}'
+        app.kubernetes.io/instance: "{{ .Release.Name }}"
       ports:
         - protocol: TCP
           port: 80
@@ -121,10 +124,10 @@ extraObjects:
       parentRefs:
         - group: gateway.networking.k8s.io
           kind: Gateway
-          name: my-gateway       # <-- your Gateway name
-          namespace: gateway     # <-- your Gateway namespace
+          name: my-gateway # <-- your Gateway name
+          namespace: gateway # <-- your Gateway namespace
       hostnames:
-        - kube-schemas.example.com  # <-- your hostname
+        - kube-schemas.example.com # <-- your hostname
       rules:
         - matches:
             - path:

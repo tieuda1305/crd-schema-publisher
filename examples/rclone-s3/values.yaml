@@ -1,3 +1,6 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/sholdee/crd-schema-publisher/refs/heads/main/charts/crd-schema-publisher/values.schema.json
+#
 # rclone sidecar example — sync CRD schemas to S3-compatible storage
 #
 # This example runs crd-schema-publisher in extract-only mode (no Cloudflare
@@ -58,9 +61,9 @@ extraContainers:
       - name: RCLONE_CONFIG_S3_TYPE
         value: "s3"
       - name: RCLONE_CONFIG_S3_PROVIDER
-        value: "Other"  # <-- your provider (AWS, Minio, Cloudflare, GCS, or Other)
+        value: "Other" # <-- your provider (AWS, Minio, Cloudflare, GCS, or Other)
       - name: RCLONE_CONFIG_S3_ENDPOINT
-        value: "s3.us-west-002.backblazeb2.com"  # <-- your endpoint (omit for AWS)
+        value: "s3.us-west-002.backblazeb2.com" # <-- your endpoint (omit for AWS)
       # Suppress default config file lookup — all config is via RCLONE_CONFIG_* env vars
       - name: RCLONE_CONFIG
         value: ""
