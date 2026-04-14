@@ -1,6 +1,6 @@
 apiVersion: v2
 name: crd-schema-publisher
-description: Extracts CRD JSON schemas from Kubernetes and publishes them to Cloudflare Pages
+description: Extracts CRD JSON schemas from Kubernetes and publishes them — Cloudflare Pages built in, or extract-only mode with any backend via sidecar
 type: application
 # version and appVersion are placeholder values — both are overridden at publish
 # time by the helm-package CI job and are never used in published artifacts.
@@ -18,3 +18,16 @@ keywords:
   - json-schema
   - cloudflare-pages
   - schema
+annotations:
+  artifacthub.io/links: |
+    - name: Live Demo
+      url: https://kube-schemas.shold.io
+    - name: Documentation
+      url: https://github.com/sholdee/crd-schema-publisher#readme
+    - name: Source
+      url: https://github.com/sholdee/crd-schema-publisher
+  artifacthub.io/screenshots: |
+    - title: Schema Index
+      url: https://raw.githubusercontent.com/sholdee/crd-schema-publisher/main/docs/screenshots/index.png
+    - title: Schema Documentation
+      url: https://raw.githubusercontent.com/sholdee/crd-schema-publisher/main/docs/screenshots/schema-doc.png
