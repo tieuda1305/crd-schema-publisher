@@ -1,12 +1,14 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["mode", "image"],
   "additionalProperties": false,
   "properties": {
     "mode": {
       "type": "string",
-      "enum": ["controller", "cronjob"],
+      "enum": [
+        "controller",
+        "cronjob"
+      ],
       "description": "Deployment mode"
     },
     "replicaCount": {
@@ -16,7 +18,9 @@
     },
     "image": {
       "type": "object",
-      "required": ["repository"],
+      "required": [
+        "repository"
+      ],
       "additionalProperties": false,
       "properties": {
         "repository": {
@@ -34,7 +38,11 @@
         },
         "pullPolicy": {
           "type": "string",
-          "enum": ["Always", "IfNotPresent", "Never"],
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ],
           "description": "Image pull policy"
         }
       }
@@ -67,7 +75,10 @@
           "description": "Schema output directory inside the container"
         },
         "debounceSeconds": {
-          "type": ["string", "integer"],
+          "type": [
+            "string",
+            "integer"
+          ],
           "description": "Seconds to wait after the last CRD event before publishing (controller only)"
         },
         "healthPort": {
@@ -79,7 +90,10 @@
           "description": "Leader election lease name (controller only)"
         },
         "skipRender": {
-          "type": ["string", "boolean"],
+          "type": [
+            "string",
+            "boolean"
+          ],
           "description": "Set to true to skip HTML schema page rendering"
         }
       }
@@ -109,7 +123,10 @@
             },
             "kind": {
               "type": "string",
-              "enum": ["SecretStore", "ClusterSecretStore"],
+              "enum": [
+                "SecretStore",
+                "ClusterSecretStore"
+              ],
               "description": "SecretStore or ClusterSecretStore"
             }
           }
@@ -188,7 +205,11 @@
         },
         "concurrencyPolicy": {
           "type": "string",
-          "enum": ["Allow", "Forbid", "Replace"],
+          "enum": [
+            "Allow",
+            "Forbid",
+            "Replace"
+          ],
           "description": "Concurrency policy for the CronJob"
         },
         "successfulJobsHistoryLimit": {
@@ -208,7 +229,10 @@
         },
         "restartPolicy": {
           "type": "string",
-          "enum": ["OnFailure", "Never"],
+          "enum": [
+            "OnFailure",
+            "Never"
+          ],
           "description": "Restart policy for job pods"
         }
       }
@@ -273,7 +297,11 @@
     },
     "podAntiAffinityPreset": {
       "type": "string",
-      "enum": ["", "soft", "hard"],
+      "enum": [
+        "",
+        "soft",
+        "hard"
+      ],
       "description": "Pod anti-affinity preset (controller mode only)"
     },
     "podDisruptionBudget": {
@@ -285,11 +313,17 @@
           "description": "Create a PodDisruptionBudget"
         },
         "minAvailable": {
-          "type": ["integer", "string"],
+          "type": [
+            "integer",
+            "string"
+          ],
           "description": "Minimum number of available pods"
         },
         "maxUnavailable": {
-          "type": ["integer", "string"],
+          "type": [
+            "integer",
+            "string"
+          ],
           "description": "Maximum number of unavailable pods"
         }
       }
@@ -507,72 +541,5 @@
         "type": "object"
       }
     }
-  },
-  "oneOf": [
-    {
-      "properties": {
-        "existingSecret": {
-          "type": "object",
-          "properties": {
-            "name": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          "required": ["name"]
-        },
-        "externalSecret": {
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "enum": [false]
-            }
-          }
-        }
-      }
-    },
-    {
-      "properties": {
-        "existingSecret": {
-          "type": "object",
-          "properties": {
-            "name": {
-              "type": "string",
-              "maxLength": 0
-            }
-          }
-        },
-        "externalSecret": {
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "enum": [true]
-            }
-          },
-          "required": ["enabled"]
-        }
-      }
-    },
-    {
-      "properties": {
-        "existingSecret": {
-          "type": "object",
-          "properties": {
-            "name": {
-              "type": "string",
-              "maxLength": 0
-            }
-          }
-        },
-        "externalSecret": {
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "enum": [false]
-            }
-          }
-        }
-      }
-    }
-  ]
+  }
 }
