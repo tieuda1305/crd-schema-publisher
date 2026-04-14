@@ -5,8 +5,12 @@
 .golangci.yml
 .gitignore
 .markdownlint-cli2.yaml
+charts
 deploy
+docs
+examples
 output
+artifacthub-repo.yml
 CLAUDE.md
 CODE_OF_CONDUCT.md
 CONTRIBUTING.md
