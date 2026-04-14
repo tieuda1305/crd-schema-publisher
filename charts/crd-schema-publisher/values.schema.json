@@ -541,5 +541,20 @@
         "type": "object"
       }
     }
+  },
+  "if": {
+    "properties": {
+      "existingSecret": {
+        "properties": { "name": { "minLength": 1 } },
+        "required": ["name"]
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "externalSecret": {
+        "properties": { "enabled": { "const": false } }
+      }
+    }
   }
 }
