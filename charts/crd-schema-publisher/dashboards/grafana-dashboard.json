@@ -161,7 +161,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "time() - crdpublisher_watchdog_timestamp",
+          "expr": "max(time() - crdpublisher_watchdog_timestamp)",
           "legendFormat": "",
           "refId": "A",
           "instant": true
@@ -237,7 +237,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "crdpublisher_leader",
+          "expr": "max(crdpublisher_leader)",
           "legendFormat": "",
           "refId": "A",
           "instant": true
@@ -305,7 +305,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "crdpublisher_publish_cycle_duration_seconds",
+          "expr": "max(crdpublisher_publish_cycle_duration_seconds)",
           "legendFormat": "",
           "refId": "A",
           "instant": true
@@ -366,7 +366,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "crdpublisher_crds_discovered",
+          "expr": "max(crdpublisher_crds_discovered)",
           "legendFormat": "",
           "refId": "A",
           "instant": true
@@ -427,7 +427,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "crdpublisher_schemas_written",
+          "expr": "max(crdpublisher_schemas_written)",
           "legendFormat": "",
           "refId": "A",
           "instant": true
@@ -488,7 +488,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "time() - crdpublisher_last_successful_publish_timestamp",
+          "expr": "max(time() - crdpublisher_last_successful_publish_timestamp)",
           "legendFormat": "",
           "refId": "A",
           "instant": true
@@ -553,7 +553,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "floor(increase(crdpublisher_publish_cycle_total{result=\"error\"}[1h]))",
+          "expr": "max(floor(increase(crdpublisher_publish_cycle_total{result=\"error\"}[1h])))",
           "legendFormat": "",
           "refId": "A",
           "instant": true
@@ -595,7 +595,7 @@
             "lineInterpolation": "linear",
             "barAlignment": 0,
             "lineWidth": 1,
-            "fillOpacity": 80,
+            "fillOpacity": 100,
             "gradientMode": "none",
             "spanNulls": false,
             "insertNulls": false,
@@ -682,7 +682,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "increase(crdpublisher_publish_cycle_total{result=\"success\"}[5m])",
+          "expr": "max(increase(crdpublisher_publish_cycle_total{result=\"success\"}[5m]))",
           "legendFormat": "Success",
           "refId": "A"
         },
@@ -691,7 +691,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "increase(crdpublisher_publish_cycle_total{result=\"error\"}[5m])",
+          "expr": "max(increase(crdpublisher_publish_cycle_total{result=\"error\"}[5m]))",
           "legendFormat": "Error",
           "refId": "B"
         }
@@ -720,12 +720,12 @@
             "lineInterpolation": "linear",
             "barAlignment": 0,
             "lineWidth": 2,
-            "fillOpacity": 20,
+            "fillOpacity": 0,
             "gradientMode": "none",
             "spanNulls": false,
             "insertNulls": false,
-            "showPoints": "never",
-            "pointSize": 5,
+            "showPoints": "always",
+            "pointSize": 6,
             "stacking": {
               "mode": "none",
               "group": "A"
@@ -779,7 +779,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "crdpublisher_publish_cycle_duration_seconds",
+          "expr": "max(crdpublisher_publish_cycle_duration_seconds)",
           "legendFormat": "Duration",
           "refId": "A"
         }
@@ -907,7 +907,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "crdpublisher_crds_discovered",
+          "expr": "max(crdpublisher_crds_discovered)",
           "legendFormat": "CRDs",
           "refId": "A"
         },
@@ -916,7 +916,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "crdpublisher_schemas_written",
+          "expr": "max(crdpublisher_schemas_written)",
           "legendFormat": "Schemas",
           "refId": "B"
         }
@@ -945,7 +945,7 @@
             "lineInterpolation": "linear",
             "barAlignment": 0,
             "lineWidth": 1,
-            "fillOpacity": 80,
+            "fillOpacity": 100,
             "gradientMode": "none",
             "spanNulls": false,
             "insertNulls": false,
@@ -1004,7 +1004,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "increase(crdpublisher_publish_skipped_total[5m])",
+          "expr": "max(increase(crdpublisher_publish_skipped_total[5m]))",
           "legendFormat": "Skips",
           "refId": "A"
         }
