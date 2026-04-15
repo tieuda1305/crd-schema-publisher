@@ -14,7 +14,7 @@
       "type": "grafana",
       "id": "grafana",
       "name": "Grafana",
-      "version": "10.0.0"
+      "version": "12.0.0"
     },
     {
       "type": "datasource",
@@ -46,8 +46,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "schemaVersion": 39,
-  "style": "dark",
+  "schemaVersion": 42,
   "time": {
     "from": "now-6h",
     "to": "now"
@@ -137,7 +136,7 @@
             ]
           },
           "color": {
-            "mode": "background"
+            "mode": "thresholds"
           }
         },
         "overrides": []
@@ -213,7 +212,7 @@
             ]
           },
           "color": {
-            "mode": "background"
+            "mode": "thresholds"
           }
         },
         "overrides": []
@@ -281,7 +280,7 @@
             ]
           },
           "color": {
-            "mode": "value"
+            "mode": "thresholds"
           }
         },
         "overrides": []
@@ -529,7 +528,7 @@
             ]
           },
           "color": {
-            "mode": "background"
+            "mode": "thresholds"
           }
         },
         "overrides": []
@@ -674,7 +673,6 @@
         "legend": {
           "displayMode": "list",
           "placement": "bottom",
-          "showValues": "auto",
           "calcs": []
         }
       },
@@ -772,7 +770,6 @@
         "legend": {
           "displayMode": "list",
           "placement": "bottom",
-          "showValues": "auto",
           "calcs": []
         }
       },
@@ -901,7 +898,6 @@
         "legend": {
           "displayMode": "list",
           "placement": "bottom",
-          "showValues": "auto",
           "calcs": []
         }
       },
@@ -999,7 +995,6 @@
         "legend": {
           "displayMode": "list",
           "placement": "bottom",
-          "showValues": "auto",
           "calcs": []
         }
       },
