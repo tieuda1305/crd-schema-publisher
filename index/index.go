@@ -28,6 +28,7 @@ type indexData struct {
 	GroupCount int
 	TotalCount int
 	UpdatedAt  string
+	BasePath   string
 }
 
 const faviconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
@@ -64,7 +65,7 @@ var indexTemplate = `<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kubernetes CRD Schemas</title>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/svg+xml" href="{{.BasePath}}/favicon.svg">
 <style>` + theme.CSSVars + theme.CSSBase + `
   header { margin-bottom: 2rem; }
   .title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem; }
@@ -179,7 +180,7 @@ var indexTemplate = `<!DOCTYPE html>
 </style>
 ` + theme.HeadScript + `
 </head>
-<body>
+<body data-base-path="{{.BasePath}}">
 ` + theme.FlareDiv + `
 <header>
   <div class="title-row">
@@ -247,7 +248,7 @@ metadata:
 <details class="group" data-group="{{.Name}}">
 <summary><span class="group-name">{{.Name}}</span> <span class="badge">{{len .Schemas}}</span></summary>
 <div class="schemas">
-{{range .Schemas}}<a href="/{{.HTMLPath}}" data-schema="{{.Name}}" data-url="/{{.Path}}">{{.Name}}<span class="copy-hint">copy URL</span></a>
+{{range .Schemas}}<a href="{{$.BasePath}}/{{.HTMLPath}}" data-schema="{{.Name}}" data-url="{{$.BasePath}}/{{.Path}}">{{.Name}}<span class="copy-hint">copy URL</span></a>
 {{end}}</div>
 </details>
 {{end}}
@@ -386,7 +387,8 @@ metadata:
   });
 
   document.querySelectorAll('.usage-content code').forEach(function(el){
-    el.textContent = el.textContent.replace(/https:\/\/YOUR_DOMAIN/g, location.origin);
+    var base = document.body.dataset.basePath || '';
+    el.textContent = el.textContent.replace(/https:\/\/YOUR_DOMAIN/g, location.origin + base);
   });
 
   // Save view state before navigating to a schema page
@@ -434,7 +436,7 @@ metadata:
 </body>
 </html>`
 
-func Generate(outputDir string) error {
+func Generate(outputDir, basePath string) error {
 	groups := map[string][]schemaEntry{}
 
 	entries, err := os.ReadDir(outputDir)
@@ -499,6 +501,7 @@ func Generate(outputDir string) error {
 		GroupCount: len(sortedGroups),
 		TotalCount: totalCount,
 		UpdatedAt:  time.Now().UTC().Format("2006-01-02 15:04 UTC"),
+		BasePath:   basePath,
 	}); err != nil {
 		return err
 	}
