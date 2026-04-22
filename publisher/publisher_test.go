@@ -47,9 +47,11 @@ func TestPublish_FullFlow(t *testing.T) {
 	defer server.Close()
 
 	tmpDir := t.TempDir()
-	_ = os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
-	_ = os.WriteFile(filepath.Join(tmpDir, "example.io", "test_v1.json"), []byte(`{"type":"object"}`), 0o644)
-	_ = os.WriteFile(filepath.Join(tmpDir, "index.html"), []byte(`<html></html>`), 0o644)
+	genDir := filepath.Join(tmpDir, ".generations", "gen1")
+	_ = os.MkdirAll(filepath.Join(genDir, "example.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(genDir, "example.io", "test_v1.json"), []byte(`{"type":"object"}`), 0o644)
+	_ = os.WriteFile(filepath.Join(genDir, "index.html"), []byte(`<html></html>`), 0o644)
+	_ = os.Symlink(filepath.Join(".generations", "gen1"), filepath.Join(tmpDir, "current"))
 
 	p := &Publisher{
 		APIToken: "fake-token", AccountID: "fake-account", ProjectName: "test-project",
@@ -93,8 +95,10 @@ func TestPublish_CreatesProjectIfMissing(t *testing.T) {
 	defer server.Close()
 
 	tmpDir := t.TempDir()
-	_ = os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
-	_ = os.WriteFile(filepath.Join(tmpDir, "example.io", "test_v1.json"), []byte(`{}`), 0o644)
+	genDir := filepath.Join(tmpDir, ".generations", "gen1")
+	_ = os.MkdirAll(filepath.Join(genDir, "example.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(genDir, "example.io", "test_v1.json"), []byte(`{}`), 0o644)
+	_ = os.Symlink(filepath.Join(".generations", "gen1"), filepath.Join(tmpDir, "current"))
 
 	p := &Publisher{
 		APIToken: "fake-token", AccountID: "fake-account", ProjectName: "new-project",
@@ -266,7 +270,10 @@ func TestPublish_MalformedUploadToken(t *testing.T) {
 	defer server.Close()
 
 	tmpDir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(tmpDir, "test.json"), []byte(`{}`), 0o644)
+	genDir := filepath.Join(tmpDir, ".generations", "gen1")
+	_ = os.MkdirAll(genDir, 0o755)
+	_ = os.WriteFile(filepath.Join(genDir, "test.json"), []byte(`{}`), 0o644)
+	_ = os.Symlink(filepath.Join(".generations", "gen1"), filepath.Join(tmpDir, "current"))
 
 	p := &Publisher{
 		APIToken: "fake-token", AccountID: "fake-account", ProjectName: "test-project",
@@ -280,4 +287,103 @@ func TestPublish_MalformedUploadToken(t *testing.T) {
 	if !strings.Contains(err.Error(), "decoding response") {
 		t.Fatalf("expected error to contain 'decoding response', got: %v", err)
 	}
+}
+
+func newManifestCaptureServer(t *testing.T, manifest *map[string]string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/projects/test-project"):
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": map[string]interface{}{"name": "test-project"}})
+		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/upload-token"):
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": map[string]interface{}{"jwt": "fake-jwt-token"}})
+		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/check-missing"):
+			var body struct {
+				Hashes []string `json:"hashes"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": body.Hashes})
+		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/upload"):
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": nil})
+		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/upsert-hashes"):
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": nil})
+		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/deployments"):
+			decodeManifest(t, r, manifest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": map[string]interface{}{"url": "https://test.pages.dev"}})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+}
+
+func decodeManifest(t *testing.T, r *http.Request, manifest *map[string]string) {
+	t.Helper()
+	if err := r.ParseMultipartForm(1 << 20); err != nil {
+		t.Fatalf("ParseMultipartForm: %v", err)
+	}
+	if err := json.Unmarshal([]byte(r.FormValue("manifest")), manifest); err != nil {
+		t.Fatalf("manifest unmarshal: %v", err)
+	}
+}
+
+func seedCurrentGeneration(t *testing.T) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	generationDir := filepath.Join(tmpDir, ".generations", "gen1")
+	if err := os.MkdirAll(filepath.Join(generationDir, "example.io"), 0o755); err != nil {
+		t.Fatalf("mkdir generation: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(generationDir, "_meta"), 0o755); err != nil {
+		t.Fatalf("mkdir metadata: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(generationDir, "index.html"), []byte(`<html></html>`), 0o644); err != nil {
+		t.Fatalf("write index: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(generationDir, "example.io", "test_v1.json"), []byte(`{"type":"object"}`), 0o644); err != nil {
+		t.Fatalf("write schema: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(generationDir, "_meta", "kinds.json"), []byte(`{"example.io/test_v1.json":"Test"}`), 0o644); err != nil {
+		t.Fatalf("write metadata manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "flat-root.json"), []byte(`{"wrong":"path"}`), 0o644); err != nil {
+		t.Fatalf("write flat root file: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(".generations", "gen1"), filepath.Join(tmpDir, "current")); err != nil {
+		t.Fatalf("create current symlink: %v", err)
+	}
+	return tmpDir
+}
+
+func assertCurrentManifest(t *testing.T, manifest map[string]string) {
+	t.Helper()
+	if _, ok := manifest["/index.html"]; !ok {
+		t.Fatal("expected index.html from current generation in manifest")
+	}
+	if _, ok := manifest["/example.io/test_v1.json"]; !ok {
+		t.Fatal("expected schema file from current generation in manifest")
+	}
+	if _, ok := manifest["/_meta/kinds.json"]; ok {
+		t.Fatal("did not expect metadata manifest in manifest")
+	}
+	if _, ok := manifest["/flat-root.json"]; ok {
+		t.Fatal("did not expect flat root files outside current generation in manifest")
+	}
+}
+
+func TestPublish_UsesCurrentAndSkipsKindFiles(t *testing.T) {
+	var manifest map[string]string
+	server := newManifestCaptureServer(t, &manifest)
+	defer server.Close()
+
+	tmpDir := seedCurrentGeneration(t)
+
+	p := &Publisher{
+		APIToken: "fake-token", AccountID: "fake-account", ProjectName: "test-project",
+		BaseURL: server.URL + "/client/v4", AssetsURL: server.URL + "/client/v4",
+	}
+	if err := p.Publish(tmpDir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertCurrentManifest(t, manifest)
 }

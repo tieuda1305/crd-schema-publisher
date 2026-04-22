@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -19,6 +22,16 @@ import (
 	"github.com/sholdee/crd-schema-publisher/renderer"
 	"github.com/sholdee/crd-schema-publisher/watcher"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+)
+
+var (
+	buildClientFunc       = extractor.BuildClient
+	buildSiteFunc         = extractor.BuildSite
+	validateOutputDirFunc = extractor.ValidateOutputDir
+	renderPreviewFunc     = renderer.RenderAll
+	generatePreviewFunc   = index.Generate
+	scaffoldPreviewFunc   = scaffoldSampleData
+	publishOutputFunc     = runUpload
 )
 
 func initLogger(cmd string) {
@@ -99,48 +112,37 @@ func normalizeBasePath(s string) string {
 }
 
 func runExtract() error {
+	_, err := runBuild()
+	return err
+}
+
+func runBuild() (extractor.SiteBuildResult, error) {
 	outputDir := getEnv("OUTPUT_DIR", "/output")
 	basePath := normalizeBasePath(os.Getenv("BASE_PATH"))
 	kubeContext := os.Getenv("KUBECTL_CONTEXT")
 
 	slog.Info("building kubernetes client")
-	client, err := extractor.BuildClient(kubeContext)
+	client, err := buildClientFunc(kubeContext)
 	if err != nil {
-		return fmt.Errorf("building client: %w", err)
+		return extractor.SiteBuildResult{}, fmt.Errorf("building client: %w", err)
 	}
 
-	slog.Info("listing CRDs")
-	crds, err := extractor.ListCRDs(client.ApiextensionsV1().CustomResourceDefinitions())
+	result, err := buildSiteFunc(extractor.SiteBuildOptions{
+		Lister:    client.ApiextensionsV1().CustomResourceDefinitions(),
+		OutputDir: outputDir,
+		BasePath:  basePath,
+		Render:    os.Getenv("SKIP_RENDER") != "true",
+	})
 	if err != nil {
-		return err
+		return extractor.SiteBuildResult{}, err
 	}
-	slog.Info("found CRDs", "count", len(crds))
-
-	if len(crds) == 0 {
-		slog.Info("no CRDs found")
-		return nil
+	if result.Status == extractor.BuildResultNoop {
+		slog.Info("no CRDs found, leaving existing output untouched")
+		return result, nil
 	}
 
-	count, err := extractor.WriteSchemas(crds, outputDir)
-	if err != nil {
-		return err
-	}
-	slog.Info("wrote schemas", "count", count, "dir", outputDir)
-
-	if os.Getenv("SKIP_RENDER") != "true" {
-		slog.Info("rendering schema pages")
-		if err := renderer.RenderAll(outputDir, basePath); err != nil {
-			return fmt.Errorf("rendering schemas: %w", err)
-		}
-	}
-
-	slog.Info("generating index")
-	if err := index.Generate(outputDir, basePath); err != nil {
-		return fmt.Errorf("generating index: %w", err)
-	}
-
-	slog.Info("extract complete")
-	return nil
+	slog.Info("extract complete", "count", result.SchemaCount, "dir", outputDir)
+	return result, nil
 }
 
 func runUpload() error {
@@ -230,54 +232,24 @@ func runWatch() error {
 }
 
 func runPreview() error {
-	dir := getEnv("OUTPUT_DIR", "")
 	basePath := normalizeBasePath(os.Getenv("BASE_PATH"))
-	isTempDir := false
-	if dir == "" {
-		var err error
-		dir, err = os.MkdirTemp("", "crd-preview-*")
-		if err != nil {
-			return fmt.Errorf("creating temp dir: %w", err)
-		}
-		isTempDir = true
-		if err := scaffoldSampleData(dir); err != nil {
-			_ = os.RemoveAll(dir)
-			return fmt.Errorf("scaffolding sample data: %w", err)
-		}
-		slog.Info("using sample data", "dir", dir)
-	} else {
-		slog.Info("using existing output", "dir", dir)
+	serveDir, cleanup, err := preparePreviewSite(getEnv("OUTPUT_DIR", ""), basePath, os.Getenv("SKIP_RENDER") != "true")
+	if err != nil {
+		return err
 	}
-
-	if os.Getenv("SKIP_RENDER") != "true" {
-		slog.Info("rendering schema pages")
-		if err := renderer.RenderAll(dir, basePath); err != nil {
-			if isTempDir {
-				_ = os.RemoveAll(dir)
-			}
-			return fmt.Errorf("rendering schemas: %w", err)
-		}
-	}
-
-	slog.Info("generating index")
-	if err := index.Generate(dir, basePath); err != nil {
-		if isTempDir {
-			_ = os.RemoveAll(dir)
-		}
-		return fmt.Errorf("generating index: %w", err)
-	}
+	defer cleanup()
 
 	addr := getEnv("PREVIEW_ADDR", "127.0.0.1:8989")
 	var handler http.Handler
 	if basePath != "" {
 		mux := http.NewServeMux()
-		mux.Handle(basePath+"/", http.StripPrefix(basePath, http.FileServer(http.Dir(dir))))
+		mux.Handle(basePath+"/", http.StripPrefix(basePath, http.FileServer(http.Dir(serveDir))))
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, basePath+"/", http.StatusFound)
 		})
 		handler = mux
 	} else {
-		handler = http.FileServer(http.Dir(dir))
+		handler = http.FileServer(http.Dir(serveDir))
 	}
 	srv := &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 
@@ -296,48 +268,264 @@ func runPreview() error {
 	} else {
 		slog.Info("serving preview", "addr", addr)
 	}
-	err := srv.ListenAndServe()
-	if isTempDir {
-		_ = os.RemoveAll(dir)
-	}
-	if err == http.ErrServerClosed {
+	err = srv.ListenAndServe()
+	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
 	return err
 }
 
-func scaffoldSampleData(dir string) error {
-	sampleGroups := map[string][]string{
-		"cert-manager.io":             {"certificate_v1.json", "clusterissuer_v1.json", "issuer_v1.json"},
-		"monitoring.coreos.com":       {"alertmanager_v1.json", "podmonitor_v1.json", "prometheus_v1.json", "servicemonitor_v1.json"},
-		"helm.toolkit.fluxcd.io":      {"helmrelease_v2.json", "helmrelease_v2beta1.json"},
-		"source.toolkit.fluxcd.io":    {"gitrepository_v1.json", "helmchart_v1.json", "helmrepository_v1.json", "ocirepository_v1beta2.json"},
-		"kustomize.toolkit.fluxcd.io": {"kustomization_v1.json"},
-		"cilium.io":                   {"ciliumnetworkpolicy_v2.json", "ciliumclusterwidenetworkpolicy_v2.json", "ciliumendpoint_v2.json"},
-		"traefik.io":                  {"ingressroute_v1alpha1.json", "middleware_v1alpha1.json", "tlsoption_v1alpha1.json"},
-		"external-secrets.io":         {"externalsecret_v1beta1.json", "clustersecretstore_v1beta1.json", "secretstore_v1beta1.json"},
-		"metallb.io":                  {"ipaddresspool_v1beta1.json", "l2advertisement_v1beta1.json"},
-		"volsync.backube":             {"replicationsource_v1alpha1.json", "replicationdestination_v1alpha1.json"},
+func preparePreviewSite(outputDir, basePath string, render bool) (string, func(), error) {
+	if outputDir == "" {
+		rootDir, cleanup, err := newPreviewRoot()
+		if err != nil {
+			return "", nil, err
+		}
+		if err := preparePreviewGeneration(rootDir, basePath, render, scaffoldPreviewFunc, "scaffolding sample data"); err != nil {
+			cleanup()
+			return "", nil, err
+		}
+		slog.Info("using sample data", "dir", rootDir, "active_dir", extractor.ActiveOutputDir(rootDir))
+		return extractor.ActiveOutputDir(rootDir), cleanup, nil
 	}
+
+	if err := validateOutputDirFunc(outputDir); err != nil {
+		return "", nil, err
+	}
+
+	activeDir, resolvedActiveDir, err := resolvePreviewActiveDir(outputDir)
+	if err != nil {
+		return "", nil, err
+	}
+
+	rootDir, cleanup, err := newPreviewRoot()
+	if err != nil {
+		return "", nil, err
+	}
+	if err := preparePreviewGeneration(rootDir, basePath, render, func(generationDir string) error {
+		return copyPreviewFiles(resolvedActiveDir, generationDir)
+	}, "copying active output"); err != nil {
+		cleanup()
+		return "", nil, err
+	}
+	slog.Info("using existing output", "dir", outputDir, "active_dir", activeDir, "preview_dir", extractor.ActiveOutputDir(rootDir))
+	return extractor.ActiveOutputDir(rootDir), cleanup, nil
+}
+
+func newPreviewRoot() (string, func(), error) {
+	rootDir, err := os.MkdirTemp("", "crd-preview-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("creating temp dir: %w", err)
+	}
+	return rootDir, func() {
+		_ = os.RemoveAll(rootDir)
+	}, nil
+}
+
+func resolvePreviewActiveDir(outputDir string) (string, string, error) {
+	activeDir := extractor.ActiveOutputDir(outputDir)
+	resolvedActiveDir, err := filepath.EvalSymlinks(activeDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", "", fmt.Errorf("active output %q does not exist; run extract first", activeDir)
+		}
+		return "", "", fmt.Errorf("resolving active output: %w", err)
+	}
+	return activeDir, resolvedActiveDir, nil
+}
+
+func preparePreviewGeneration(rootDir, basePath string, render bool, seed func(string) error, seedAction string) error {
+	generationDir, err := makePreviewGenerationDir(rootDir)
+	if err != nil {
+		return fmt.Errorf("creating preview generation: %w", err)
+	}
+	if err := seed(generationDir); err != nil {
+		return fmt.Errorf("%s: %w", seedAction, err)
+	}
+	if render {
+		slog.Info("rendering schema pages")
+		if err := renderPreviewFunc(generationDir, basePath); err != nil {
+			return fmt.Errorf("rendering schemas: %w", err)
+		}
+	}
+	slog.Info("generating index")
+	if err := generatePreviewFunc(generationDir, basePath); err != nil {
+		return fmt.Errorf("generating index: %w", err)
+	}
+	if err := activatePreviewGeneration(rootDir, generationDir); err != nil {
+		return fmt.Errorf("activating preview generation: %w", err)
+	}
+	return nil
+}
+
+func makePreviewGenerationDir(outputDir string) (string, error) {
+	generationsDir := filepath.Join(outputDir, ".generations")
+	if err := os.MkdirAll(generationsDir, 0o755); err != nil {
+		return "", err
+	}
+	return os.MkdirTemp(generationsDir, "preview-")
+}
+
+func activatePreviewGeneration(outputDir, generationDir string) error {
+	currentPath := extractor.ActiveOutputDir(outputDir)
+	tmpPath := filepath.Join(outputDir, ".current.tmp")
+	target := filepath.Join(".generations", filepath.Base(generationDir))
+
+	_ = os.Remove(tmpPath)
+	if err := os.Symlink(target, tmpPath); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, currentPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	return nil
+}
+
+func copyPreviewFiles(srcDir, dstDir string) error {
+	return filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		rel, err := filepath.Rel(srcDir, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+
+		dstPath := filepath.Join(dstDir, rel)
+		if info.IsDir() {
+			return os.MkdirAll(dstPath, info.Mode())
+		}
+		return copyPreviewFile(path, dstPath, info.Mode())
+	})
+}
+
+func copyPreviewFile(srcPath, dstPath string, mode os.FileMode) error {
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = src.Close()
+	}()
+
+	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
+		return err
+	}
+
+	dst, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = dst.Close()
+	}()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return err
+	}
+	return nil
+}
+
+func scaffoldSampleData(dir string) error {
+	type sampleSchema struct {
+		file string
+		kind string
+	}
+
+	sampleGroups := map[string][]sampleSchema{
+		"cert-manager.io": {
+			{file: "certificate_v1.json", kind: "Certificate"},
+			{file: "clusterissuer_v1.json", kind: "ClusterIssuer"},
+			{file: "issuer_v1.json", kind: "Issuer"},
+		},
+		"monitoring.coreos.com": {
+			{file: "alertmanager_v1.json", kind: "Alertmanager"},
+			{file: "podmonitor_v1.json", kind: "PodMonitor"},
+			{file: "prometheus_v1.json", kind: "Prometheus"},
+			{file: "servicemonitor_v1.json", kind: "ServiceMonitor"},
+		},
+		"helm.toolkit.fluxcd.io": {
+			{file: "helmrelease_v2.json", kind: "HelmRelease"},
+			{file: "helmrelease_v2beta1.json", kind: "HelmRelease"},
+		},
+		"source.toolkit.fluxcd.io": {
+			{file: "gitrepository_v1.json", kind: "GitRepository"},
+			{file: "helmchart_v1.json", kind: "HelmChart"},
+			{file: "helmrepository_v1.json", kind: "HelmRepository"},
+			{file: "ocirepository_v1beta2.json", kind: "OCIRepository"},
+		},
+		"kustomize.toolkit.fluxcd.io": {
+			{file: "kustomization_v1.json", kind: "Kustomization"},
+		},
+		"cilium.io": {
+			{file: "ciliumnetworkpolicy_v2.json", kind: "CiliumNetworkPolicy"},
+			{file: "ciliumclusterwidenetworkpolicy_v2.json", kind: "CiliumClusterwideNetworkPolicy"},
+			{file: "ciliumendpoint_v2.json", kind: "CiliumEndpoint"},
+		},
+		"traefik.io": {
+			{file: "ingressroute_v1alpha1.json", kind: "IngressRoute"},
+			{file: "middleware_v1alpha1.json", kind: "Middleware"},
+			{file: "tlsoption_v1alpha1.json", kind: "TLSOption"},
+		},
+		"external-secrets.io": {
+			{file: "externalsecret_v1beta1.json", kind: "ExternalSecret"},
+			{file: "clustersecretstore_v1beta1.json", kind: "ClusterSecretStore"},
+			{file: "secretstore_v1beta1.json", kind: "SecretStore"},
+		},
+		"metallb.io": {
+			{file: "ipaddresspool_v1beta1.json", kind: "IPAddressPool"},
+			{file: "l2advertisement_v1beta1.json", kind: "L2Advertisement"},
+		},
+		"volsync.backube": {
+			{file: "replicationsource_v1alpha1.json", kind: "ReplicationSource"},
+			{file: "replicationdestination_v1alpha1.json", kind: "ReplicationDestination"},
+		},
+	}
+	kinds := make(map[string]string)
 	for group, files := range sampleGroups {
 		groupDir := filepath.Join(dir, group)
 		if err := os.MkdirAll(groupDir, 0o755); err != nil {
 			return fmt.Errorf("creating group dir %s: %w", group, err)
 		}
-		for _, f := range files {
-			if err := os.WriteFile(filepath.Join(groupDir, f), []byte(`{"type":"object"}`), 0o644); err != nil {
-				return fmt.Errorf("writing %s/%s: %w", group, f, err)
+		for _, schema := range files {
+			path := filepath.Join(groupDir, schema.file)
+			if err := os.WriteFile(path, []byte(`{"type":"object"}`), 0o644); err != nil {
+				return fmt.Errorf("writing %s/%s: %w", group, schema.file, err)
 			}
+			kinds[filepath.ToSlash(filepath.Join(group, schema.file))] = schema.kind
 		}
+	}
+	manifestDir := filepath.Join(dir, "_meta")
+	if err := os.MkdirAll(manifestDir, 0o755); err != nil {
+		return fmt.Errorf("creating metadata dir: %w", err)
+	}
+	manifestBytes, err := json.MarshalIndent(kinds, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encoding kind manifest: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(manifestDir, "kinds.json"), append(manifestBytes, '\n'), 0o644); err != nil {
+		return fmt.Errorf("writing kind manifest: %w", err)
 	}
 	return nil
 }
 
 func runAll() error {
-	if err := runExtract(); err != nil {
+	result, err := runBuild()
+	if err != nil {
 		return fmt.Errorf("extract: %w", err)
 	}
-	if err := runUpload(); err != nil {
+	if result.Status == extractor.BuildResultNoop {
+		return nil
+	}
+	if publishOutputFunc == nil {
+		return nil
+	}
+	if err := publishOutputFunc(); err != nil {
 		return fmt.Errorf("upload: %w", err)
 	}
 	return nil

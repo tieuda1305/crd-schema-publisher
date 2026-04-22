@@ -228,13 +228,13 @@ func TestPublishCycle_HappyPath(t *testing.T) {
 	}
 
 	// Verify schema files exist
-	schemaPath := filepath.Join(dir, "example.io", "test_v1.json")
+	schemaPath := filepath.Join(dir, "current", "example.io", "test_v1.json")
 	if _, err := os.Stat(schemaPath); os.IsNotExist(err) {
 		t.Fatalf("expected schema file at %s", schemaPath)
 	}
 
 	// Verify index.html exists
-	indexPath := filepath.Join(dir, "index.html")
+	indexPath := filepath.Join(dir, "current", "index.html")
 	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
 		t.Fatalf("expected index.html at %s", indexPath)
 	}
@@ -243,6 +243,17 @@ func TestPublishCycle_HappyPath(t *testing.T) {
 func TestPublishCycle_ExtractError(t *testing.T) {
 	t.Setenv("SKIP_RENDER", "true")
 	dir := t.TempDir()
+	keepGen := filepath.Join(dir, ".generations", "seed")
+	if err := os.MkdirAll(keepGen, 0o755); err != nil {
+		t.Fatalf("mkdir seed generation: %v", err)
+	}
+	keepPath := filepath.Join(keepGen, "index.html")
+	if err := os.WriteFile(keepPath, []byte("keep"), 0o644); err != nil {
+		t.Fatalf("write keep file: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(".generations", "seed"), filepath.Join(dir, "current")); err != nil {
+		t.Fatalf("symlink current: %v", err)
+	}
 
 	cfg := Config{
 		OutputDir: dir,
@@ -257,16 +268,25 @@ func TestPublishCycle_ExtractError(t *testing.T) {
 		t.Fatalf("expected error containing 'listing CRDs', got: %s", got)
 	}
 
-	// Verify no schema files written
-	entries, _ := os.ReadDir(dir)
-	if len(entries) != 0 {
-		t.Fatalf("expected empty dir, got %d entries", len(entries))
+	if _, err := os.Stat(filepath.Join(dir, "current", "index.html")); err != nil {
+		t.Fatalf("expected existing output to be preserved: %v", err)
 	}
 }
 
 func TestPublishCycle_EmptyCRDs(t *testing.T) {
 	t.Setenv("SKIP_RENDER", "true")
 	dir := t.TempDir()
+	keepGen := filepath.Join(dir, ".generations", "seed")
+	if err := os.MkdirAll(keepGen, 0o755); err != nil {
+		t.Fatalf("mkdir seed generation: %v", err)
+	}
+	keepPath := filepath.Join(keepGen, "index.html")
+	if err := os.WriteFile(keepPath, []byte("keep"), 0o644); err != nil {
+		t.Fatalf("write keep file: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(".generations", "seed"), filepath.Join(dir, "current")); err != nil {
+		t.Fatalf("symlink current: %v", err)
+	}
 
 	cfg := Config{
 		OutputDir: dir,
@@ -277,9 +297,8 @@ func TestPublishCycle_EmptyCRDs(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	entries, _ := os.ReadDir(dir)
-	if len(entries) != 0 {
-		t.Fatalf("expected empty dir after empty CRD list, got %d entries", len(entries))
+	if _, err := os.Stat(filepath.Join(dir, "current", "index.html")); err != nil {
+		t.Fatalf("expected existing output to remain for zero CRDs: %v", err)
 	}
 }
 

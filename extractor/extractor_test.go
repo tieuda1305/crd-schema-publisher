@@ -93,6 +93,22 @@ func TestWriteSchemas_CreatesGroupDirAndFile(t *testing.T) {
 	default:
 		t.Fatalf("unexpected type field: %T %v", schema["type"], schema["type"])
 	}
+
+	kindManifest := filepath.Join(tmpDir, "_meta", "kinds.json")
+	data, err = os.ReadFile(kindManifest)
+	if err != nil {
+		t.Fatalf("kind manifest not found: %v", err)
+	}
+	var kinds map[string]string
+	if err := json.Unmarshal(data, &kinds); err != nil {
+		t.Fatalf("invalid kind manifest JSON: %v", err)
+	}
+	if got := kinds["example.io/test_v1.json"]; got != "Test" {
+		t.Fatalf("expected kind manifest to contain original Kind, got %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "example.io", "test_v1.kind")); !os.IsNotExist(err) {
+		t.Fatalf("expected per-schema .kind sidecar to be removed, got err=%v", err)
+	}
 }
 
 func TestWriteSchemas_CreatesMasterStandalone(t *testing.T) {

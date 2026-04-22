@@ -31,6 +31,8 @@ type indexData struct {
 	BasePath   string
 }
 
+const metadataDirName = "_meta"
+
 const faviconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
 <line x1="16" y1="3" x2="28.38" y2="7.96" stroke="#6bc1fe" stroke-width="1.5" stroke-linecap="round"/>
 <line x1="28.38" y1="7.96" x2="27.02" y2="21.53" stroke="#6bc1fe" stroke-width="1.5" stroke-linecap="round"/>
@@ -437,41 +439,9 @@ metadata:
 </html>`
 
 func Generate(outputDir, basePath string) error {
-	groups := map[string][]schemaEntry{}
-
-	entries, err := os.ReadDir(outputDir)
+	groups, totalCount, err := collectGroups(outputDir)
 	if err != nil {
-		return fmt.Errorf("reading output dir: %w", err)
-	}
-
-	totalCount := 0
-	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() == "master-standalone" {
-			continue
-		}
-		groupName := entry.Name()
-		groupDir := filepath.Join(outputDir, groupName)
-		files, err := os.ReadDir(groupDir)
-		if err != nil {
-			return fmt.Errorf("reading group dir %s: %w", groupName, err)
-		}
-		for _, f := range files {
-			if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") {
-				continue
-			}
-			jsonPath := groupName + "/" + f.Name()
-			htmlPath := jsonPath
-			htmlFile := strings.TrimSuffix(f.Name(), ".json") + ".html"
-			if _, err := os.Stat(filepath.Join(groupDir, htmlFile)); err == nil {
-				htmlPath = groupName + "/" + htmlFile
-			}
-			groups[groupName] = append(groups[groupName], schemaEntry{
-				Name:     f.Name(),
-				Path:     jsonPath,
-				HTMLPath: htmlPath,
-			})
-			totalCount++
-		}
+		return err
 	}
 
 	var sortedGroups []groupData
@@ -506,4 +476,44 @@ func Generate(outputDir, basePath string) error {
 		return err
 	}
 	return f.Close()
+}
+
+func collectGroups(outputDir string) (map[string][]schemaEntry, int, error) {
+	groups := map[string][]schemaEntry{}
+
+	entries, err := os.ReadDir(outputDir)
+	if err != nil {
+		return nil, 0, fmt.Errorf("reading output dir: %w", err)
+	}
+
+	totalCount := 0
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name() == "master-standalone" || entry.Name() == metadataDirName {
+			continue
+		}
+		groupName := entry.Name()
+		groupDir := filepath.Join(outputDir, groupName)
+		files, err := os.ReadDir(groupDir)
+		if err != nil {
+			return nil, 0, fmt.Errorf("reading group dir %s: %w", groupName, err)
+		}
+		for _, f := range files {
+			if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") {
+				continue
+			}
+			jsonPath := groupName + "/" + f.Name()
+			htmlPath := jsonPath
+			htmlFile := strings.TrimSuffix(f.Name(), ".json") + ".html"
+			if _, err := os.Stat(filepath.Join(groupDir, htmlFile)); err == nil {
+				htmlPath = groupName + "/" + htmlFile
+			}
+			groups[groupName] = append(groups[groupName], schemaEntry{
+				Name:     f.Name(),
+				Path:     jsonPath,
+				HTMLPath: htmlPath,
+			})
+			totalCount++
+		}
+	}
+	return groups, totalCount, nil
 }
