@@ -94,6 +94,23 @@ type PropertyEntry struct {
 	Node *SchemaNode
 }
 
+// RenderProperty holds the rendered metadata for a schema property row.
+type RenderProperty struct {
+	Name       string
+	Path       string
+	PathKey    string
+	ParentPath string
+	SearchText string
+	Required   bool
+	Node       *SchemaNode
+	Children   []RenderProperty
+}
+
+// Expandable returns true when the property renders as an expandable details row.
+func (p RenderProperty) Expandable() bool {
+	return len(p.Children) > 0
+}
+
 // IsRequired returns true if the given property name is in this node's required list.
 func (n *SchemaNode) IsRequired(name string) bool {
 	for _, r := range n.Required {
@@ -172,12 +189,14 @@ func titleCase(s string) string {
 
 // schemaPageData holds template data for a single schema page.
 type schemaPageData struct {
-	Kind     string
-	Group    string
-	Version  string
-	JSONPath string
-	BasePath string
-	Schema   *SchemaNode
+	Kind           string
+	Group          string
+	Version        string
+	JSONPath       string
+	BasePath       string
+	Schema         *SchemaNode
+	Properties     []RenderProperty
+	SearchPathHint string
 }
 
 // renderSchemaFile reads a JSON schema file and writes a sibling .html file.
@@ -211,13 +230,16 @@ func renderSchemaFileWithKinds(tmpl *template.Template, jsonPath, group, filenam
 		version = parts[1]
 	}
 
+	properties := buildRenderProperties(&schema, "", "", "")
 	pageData := schemaPageData{
-		Kind:     kind,
-		Group:    group,
-		Version:  version,
-		JSONPath: basePath + "/" + group + "/" + filename,
-		BasePath: basePath,
-		Schema:   &schema,
+		Kind:           kind,
+		Group:          group,
+		Version:        version,
+		JSONPath:       basePath + "/" + group + "/" + filename,
+		BasePath:       basePath,
+		Schema:         &schema,
+		Properties:     properties,
+		SearchPathHint: searchPathExampleForProperties(properties),
 	}
 
 	htmlPath := strings.TrimSuffix(jsonPath, ".json") + ".html"
@@ -231,6 +253,142 @@ func renderSchemaFileWithKinds(tmpl *template.Template, jsonPath, group, filenam
 		return err
 	}
 	return f.Close()
+}
+
+func buildRenderProperties(node *SchemaNode, parentPath, parentRowPath, arraySuffix string) []RenderProperty {
+	entries := node.SortedProperties()
+	props := make([]RenderProperty, 0, len(entries))
+	for _, entry := range entries {
+		path := joinPropertyPath(parentPath, entry.Name, arraySuffix)
+		childArraySuffix := ""
+		if entry.Node.resolveType() == "array" {
+			childArraySuffix = "[]"
+		}
+
+		prop := RenderProperty{
+			Name:       entry.Name,
+			Path:       path,
+			PathKey:    buildPathSearchKey(path),
+			ParentPath: parentRowPath,
+			SearchText: buildSearchText(entry.Node),
+			Required:   node.IsRequired(entry.Name),
+			Node:       entry.Node,
+		}
+		if entry.Node.HasChildren() {
+			childNode := entry.Node
+			if entry.Node.Items != nil && len(entry.Node.Items.Properties) > 0 {
+				childNode = entry.Node.Items
+			}
+			prop.Children = buildRenderProperties(childNode, path+childArraySuffix, path, "")
+		}
+		props = append(props, prop)
+	}
+	return props
+}
+
+func searchPathExampleForProperties(props []RenderProperty) string {
+	paths := collectSearchPaths(props)
+	if len(paths) == 0 {
+		return ".spec"
+	}
+
+	if match := firstMatchingPath(paths, func(path string) bool {
+		return strings.HasPrefix(path, "spec.") && pathDepth(path) >= 2 && pathDepth(path) <= 4 && !isGenericHintPath(path)
+	}); match != "" {
+		return "." + match
+	}
+	if match := firstMatchingPath(paths, func(path string) bool {
+		return strings.HasPrefix(path, "spec.") && !isGenericHintPath(path)
+	}); match != "" {
+		return "." + match
+	}
+	if match := firstMatchingPath(paths, func(path string) bool {
+		return pathDepth(path) >= 2 && pathDepth(path) <= 4 && !isGenericHintPath(path)
+	}); match != "" {
+		return "." + match
+	}
+	if match := firstMatchingPath(paths, func(path string) bool {
+		return !isGenericHintPath(path)
+	}); match != "" {
+		return "." + match
+	}
+	return "." + paths[0]
+}
+
+func collectSearchPaths(props []RenderProperty) []string {
+	paths := make([]string, 0)
+	for _, prop := range props {
+		paths = append(paths, prop.Path)
+		if len(prop.Children) > 0 {
+			paths = append(paths, collectSearchPaths(prop.Children)...)
+		}
+	}
+	return paths
+}
+
+func firstMatchingPath(paths []string, match func(string) bool) string {
+	for _, path := range paths {
+		if match(path) {
+			return path
+		}
+	}
+	return ""
+}
+
+func pathDepth(path string) int {
+	return len(strings.Split(path, "."))
+}
+
+func isGenericHintPath(path string) bool {
+	lowerPath := strings.ToLower(strings.TrimSpace(path))
+	if lowerPath == "" {
+		return true
+	}
+
+	parts := strings.Split(lowerPath, ".")
+	last := parts[len(parts)-1]
+	switch parts[0] {
+	case "apiversion", "kind", "metadata", "status":
+		return true
+	}
+	switch last {
+	case "name", "namespace", "labels", "annotations":
+		return true
+	}
+	return false
+}
+
+func joinPropertyPath(parentPath, name, arraySuffix string) string {
+	base := name
+	if parentPath != "" {
+		base = parentPath + "." + name
+	}
+	return base + arraySuffix
+}
+
+func buildPathSearchKey(path string) string {
+	if path == "" {
+		return "|"
+	}
+	parts := strings.Split(path, ".")
+	filtered := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		filtered = append(filtered, part)
+	}
+	return "|" + strings.Join(filtered, "|") + "|"
+}
+
+func buildSearchText(node *SchemaNode) string {
+	parts := make([]string, 0, 1+len(node.Constraints()))
+	if node.Description != "" {
+		parts = append(parts, node.Description)
+	}
+	parts = append(parts, node.Constraints()...)
+	return strings.Join(parts, " ")
 }
 
 func loadKindManifest(outputDir string) (map[string]string, error) {
@@ -295,6 +453,10 @@ func collectRenderJobs(outputDir string) ([]renderJob, error) {
 // RenderAll walks the output directory and generates an HTML page for each JSON schema.
 // Skips the master-standalone directory and non-JSON files.
 func RenderAll(outputDir, basePath string) error {
+	if err := theme.WriteSchemaSearchAsset(outputDir); err != nil {
+		return fmt.Errorf("writing schema search asset: %w", err)
+	}
+
 	funcMap := template.FuncMap{
 		"childNode": func(n *SchemaNode) *SchemaNode {
 			if len(n.Properties) > 0 {
@@ -356,6 +518,7 @@ var schemaTemplate = `<!DOCTYPE html>
 <title>{{.Kind}} {{.Version}} — {{.Group}}</title>
 <link rel="icon" type="image/svg+xml" href="{{.BasePath}}/favicon.svg">
 <style>` + theme.CSSVars + theme.CSSBase + `
+` + theme.SearchCSS + `
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
   .nav-row {
@@ -388,7 +551,59 @@ var schemaTemplate = `<!DOCTYPE html>
     display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;
     align-items: center; justify-content: space-between;
   }
-  .toolbar-left { display: flex; gap: 0.75rem; }
+  .search-row {
+    width: 100%;
+    display: flex; flex-direction: column; gap: 0.35rem;
+    margin-bottom: 1rem;
+  }
+  .search-input-wrap {
+    display: grid;
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-surface);
+    font: inherit; font-size: 0.95rem; line-height: 1.2;
+    font-family: inherit; font-weight: inherit; letter-spacing: inherit;
+    text-transform: inherit; text-indent: inherit; font-kerning: inherit;
+  }
+  .search-input-wrap:focus-within { border-color: var(--accent); }
+  .search-row .search-box {
+    grid-area: 1 / 1;
+    position: relative; z-index: 1;
+    background: transparent; border-color: transparent;
+    margin: 0; appearance: none; -webkit-appearance: none;
+    font: inherit; line-height: inherit;
+    font-family: inherit; font-size: inherit; font-weight: inherit; letter-spacing: inherit;
+    text-transform: inherit; text-indent: inherit; font-kerning: inherit;
+    width: 100%;
+  }
+  .search-row .search-box:focus { border-color: transparent; }
+  .search-row .search-box::-webkit-search-decoration,
+  .search-row .search-box::-webkit-search-cancel-button,
+  .search-row .search-box::-webkit-search-results-button,
+  .search-row .search-box::-webkit-search-results-decoration { display: none; }
+  .search-ghost {
+    grid-area: 1 / 1;
+    position: absolute; inset: 0;
+    padding: 0 1rem; line-height: inherit;
+    display: flex; align-items: center;
+    pointer-events: none; white-space: pre; overflow: hidden;
+    font: inherit; letter-spacing: inherit;
+    font-family: inherit; font-size: inherit; font-weight: inherit;
+    text-transform: inherit; text-indent: inherit; font-kerning: inherit;
+  }
+  .search-ghost-prefix,
+  .search-ghost-suffix {
+    font: inherit; line-height: inherit; letter-spacing: inherit;
+    font-family: inherit; font-size: inherit; font-weight: inherit;
+    text-transform: inherit; text-indent: inherit; font-kerning: inherit;
+  }
+  .search-ghost-prefix { visibility: hidden; }
+  .search-ghost-suffix { color: var(--fg-muted); opacity: 0.75; }
+  .toolbar-groups {
+    display: contents;
+  }
+  .toolbar-left { display: flex; gap: 0.75rem; flex-wrap: wrap; }
   .toolbar button, .toolbar a {
     background: none; border: none; color: var(--fg-muted); cursor: pointer;
     font-size: 0.8rem; padding: 0.2rem 0; transition: color 0.15s;
@@ -399,12 +614,23 @@ var schemaTemplate = `<!DOCTYPE html>
     margin-bottom: 0.35rem; transition: border-color 0.2s;
   }
   .prop[open] { border-color: var(--border-active); border-left-width: 2px; }
+  .prop.search-match,
+  .prop-leaf.search-match {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent-dim);
+  }
+  .prop.search-ancestor,
+  .prop-leaf.search-ancestor {
+    border-color: var(--border-active);
+  }
   .prop > summary {
     padding: 0.5rem 0.75rem; cursor: pointer;
     font-size: 0.85rem; background: var(--bg-surface); border-radius: 6px;
     list-style: none; display: flex; align-items: center; gap: 0.5rem;
     transition: background 0.15s;
   }
+  .prop.search-match > summary,
+  .prop-leaf.search-match { background: var(--accent-dim); }
   .prop > summary::-webkit-details-marker { display: none; }
   .prop > summary::before { content: "\25B8"; color: var(--fg-muted); font-size: 0.7rem; }
   .prop[open] > summary::before { content: "\25BE"; color: var(--accent); }
@@ -460,6 +686,13 @@ var schemaTemplate = `<!DOCTYPE html>
 kind: {{.Kind}}
 metadata:
   name: example</div>
+<div class="search-row">
+  <div class="search-input-wrap">
+    <input type="search" class="search-box" placeholder="Search schema fields...  ` + theme.SearchHintText + `" id="search" autocomplete="off" spellcheck="false">
+    <div class="search-ghost" id="search-ghost" aria-hidden="true"><span class="search-ghost-prefix" id="search-ghost-prefix"></span><span class="search-ghost-suffix" id="search-ghost-suffix"></span></div>
+  </div>
+  <div class="search-status" id="search-status" data-empty-message="Tip: use {{.SearchPathHint}} for path-only search" aria-live="polite">Tip: use {{.SearchPathHint}} for path-only search</div>
+</div>
 <div class="toolbar">
   <div class="toolbar-left">
     <button id="expand-all">Expand all</button>
@@ -470,28 +703,27 @@ metadata:
     <button id="copy-url" data-url="{{.JSONPath}}">Copy schema URL</button>
   </div>
 </div>
-{{- define "properties"}}
-{{- range .SortedProperties}}
-{{- if .Node.HasChildren}}
-<details class="prop">
+{{- define "property"}}
+{{- if .Expandable}}
+<details class="prop" data-prop-row data-path="{{.Path}}" data-path-key="{{.PathKey}}" data-parent-path="{{.ParentPath}}" data-name="{{.Name}}" data-text="{{.SearchText}}">
 <summary>
   <span class="prop-name">{{.Name}}</span>
   <span class="type-badge">{{.Node.DisplayType}}</span>
-  {{- if $.IsRequired .Name}} <span class="required-badge">required</span>{{end}}
+  {{- if .Required}} <span class="required-badge">required</span>{{end}}
 </summary>
 <div class="prop-content">
   {{- if .Node.Description}}<div class="prop-desc">{{.Node.Description}}</div>{{end}}
   {{- range .Node.Constraints}}<div class="prop-constraints">{{safeHTML .}}</div>{{end}}
   <div class="prop-children">
-  {{- template "properties" (childNode .Node)}}
+  {{- range .Children}}{{template "property" .}}{{end}}
   </div>
 </div>
 </details>
 {{- else}}
-<div class="prop-leaf">
+<div class="prop-leaf" data-prop-row data-path="{{.Path}}" data-path-key="{{.PathKey}}" data-parent-path="{{.ParentPath}}" data-name="{{.Name}}" data-text="{{.SearchText}}">
   <span class="prop-name">{{.Name}}</span>
   <span class="type-badge">{{.Node.DisplayType}}</span>
-  {{- if $.IsRequired .Name}} <span class="required-badge">required</span>{{end}}
+  {{- if .Required}} <span class="required-badge">required</span>{{end}}
   <div class="leaf-desc">
     {{- if .Node.Description}}{{.Node.Description}}{{end}}
     {{- range .Node.Constraints}}<div class="leaf-constraints">{{safeHTML .}}</div>{{end}}
@@ -499,32 +731,108 @@ metadata:
 </div>
 {{- end}}
 {{- end}}
-{{- end}}
 <div id="properties">
-{{- template "properties" .Schema}}
+{{- range .Properties}}{{template "property" .}}{{end}}
 </div>
+<p class="no-results" id="no-results" data-no-results-message="No matches. Try {{.SearchPathHint}} for an exact path">No matches. Try {{.SearchPathHint}} for an exact path</p>
 ` + theme.ToastDiv + `
 ` + theme.FooterHTML + `
+<script src="{{.BasePath}}/` + theme.SchemaSearchAssetName + `"></script>
 <script>
+` + theme.SearchHashStateJS + `
 (function(){
+  var input = document.getElementById('search');
+  var searchGhost = document.getElementById('search-ghost');
+  var searchGhostPrefix = document.getElementById('search-ghost-prefix');
+  var searchGhostSuffix = document.getElementById('search-ghost-suffix');
+  var searchStatus = document.getElementById('search-status');
+  var noResults = document.getElementById('no-results');
   var props = document.querySelectorAll('.prop');
-  document.getElementById('expand-all').addEventListener('click', function(){
-    props.forEach(function(p){ p.setAttribute('open',''); });
+  var rows = Array.prototype.slice.call(document.querySelectorAll('[data-prop-row]'));
+  var learnedPathSearchStorageKey = 'crd-schema-publisher:path-search-learned';
+  var completionCandidates = [];
+  var completionIndex = -1;
+  var rowByPath = {};
+  rows.forEach(function(row){
+    rowByPath[row.dataset.path] = row;
   });
-  document.getElementById('collapse-all').addEventListener('click', function(){
-    props.forEach(function(p){ p.removeAttribute('open'); });
-  });
+
+  function visibleRows() {
+    return rows.filter(function(row){ return row.style.display !== 'none'; });
+  }
+
+  function setSearchStatus(message, hasResults) {
+    searchStatus.textContent = message;
+    searchStatus.classList.toggle('has-results', !!hasResults);
+  }
+
+  function hasLearnedPathSearch() {
+    try {
+      return localStorage.getItem(learnedPathSearchStorageKey) === '1';
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function markPathSearchLearned(rawQuery) {
+    var query = (rawQuery || '').trim();
+    if (query.indexOf('.') !== 0) {
+      return;
+    }
+    var queryState = splitPathSegments(query);
+    if (queryState.segments.length < 2) {
+      return;
+    }
+    try {
+      localStorage.setItem(learnedPathSearchStorageKey, '1');
+    } catch (err) {
+      // Ignore storage failures and fall back to showing the tip.
+    }
+  }
+
+  function currentSuggestions() {
+    return rows.map(function(row){ return row.dataset.path || ''; });
+  }
+
+  function selectedCompletion() {
+    if (completionIndex < 0 || completionIndex >= completionCandidates.length) {
+      return '';
+    }
+    return completionCandidates[completionIndex];
+  }
+
+  function bestCompletionForQuery(query) {
+    return bestCompletionForPaths(query, currentSuggestions());
+  }
+
+  function updateGhostSuggestion(rawQuery) {
+    var completion = selectedCompletion() || bestCompletionForQuery(rawQuery);
+    var suffix = ghostSuffixForCompletion(input.value, completion);
+    var prefix = ghostPrefixForCompletion(input.value, completion);
+    searchGhost.hidden = !suffix;
+    searchGhostPrefix.textContent = suffix ? prefix : '';
+    searchGhostSuffix.textContent = suffix;
+  }
+
+  function clearSearchState() {
+    rows.forEach(function(row){
+      row.style.display = '';
+      row.classList.remove('search-match', 'search-ancestor');
+      if (row.tagName === 'DETAILS') {
+        row.removeAttribute('open');
+      }
+    });
+    noResults.style.display = 'none';
+    setSearchStatus(hasLearnedPathSearch() ? '' : (searchStatus.dataset.emptyMessage || ''), false);
+    searchGhost.hidden = true;
+    searchGhostPrefix.textContent = '';
+    searchGhostSuffix.textContent = '';
+    completionCandidates = [];
+    completionIndex = -1;
+  }
+
   var toast = document.getElementById('toast');
   var toastTimer;
-  document.addEventListener('keydown', function(e){
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      if (document.activeElement && document.activeElement !== document.body) {
-        document.activeElement.blur();
-      }
-      location.href = document.body.dataset.basePath + '/';
-    }
-  });
   document.getElementById('copy-url').addEventListener('click', function(){
     var url = location.origin + this.dataset.url;
     navigator.clipboard.writeText(url).then(function(){
@@ -533,6 +841,253 @@ metadata:
       toastTimer = setTimeout(function(){ toast.classList.remove('show'); }, 1500);
     });
   });
+
+  var schemaSearch = window.SchemaSearch;
+  if (!schemaSearch) {
+    clearSearchState();
+    input.value = '';
+    input.disabled = true;
+    input.placeholder = 'Schema search unavailable';
+    setSearchStatus('Search unavailable', false);
+    if (window.console && console.warn) {
+      console.warn('schema-search.js failed to load; schema search disabled');
+    }
+    document.getElementById('expand-all').addEventListener('click', function(){
+      props.forEach(function(p){ p.setAttribute('open',''); });
+    });
+    document.getElementById('collapse-all').addEventListener('click', function(){
+      props.forEach(function(p){ p.removeAttribute('open'); });
+    });
+    document.addEventListener('keydown', function(e){
+      if (e.key !== 'Escape') {
+        return;
+      }
+      e.preventDefault();
+      var hadOpen = false;
+      visibleRows().forEach(function(row){
+        if (row.tagName === 'DETAILS' && row.hasAttribute('open')) {
+          hadOpen = true;
+          row.removeAttribute('open');
+        }
+      });
+      if (hadOpen) {
+        return;
+      }
+      if (document.activeElement && document.activeElement !== document.body) {
+        document.activeElement.blur();
+        return;
+      }
+      location.href = document.body.dataset.basePath + '/';
+    });
+    return;
+  }
+
+  var bestCompletionForPaths = schemaSearch.bestCompletionForPaths;
+  var completionCandidatesForPaths = schemaSearch.completionCandidatesForPaths;
+  var ghostPrefixForCompletion = schemaSearch.ghostPrefixForCompletion;
+  var ghostSuffixForCompletion = schemaSearch.ghostSuffixForCompletion;
+  var dotAdvanceForPathSearch = schemaSearch.dotAdvanceForPathSearch;
+  var isPathLikeQuery = schemaSearch.isPathLikeQuery;
+  var matchesPathQuery = schemaSearch.matchesPathQuery;
+  var splitPathSegments = schemaSearch.splitPathSegments;
+  var trimPathSearch = schemaSearch.trimPathSearch;
+
+  function addAncestorPaths(path, visiblePaths, openPaths) {
+    var current = path;
+    var directMatch = true;
+    while (current) {
+      visiblePaths[current] = true;
+      if (!directMatch) {
+        openPaths[current] = true;
+      }
+      var row = rowByPath[current];
+      if (!row || !row.dataset.parentPath) {
+        break;
+      }
+      current = row.dataset.parentPath;
+      directMatch = false;
+    }
+  }
+
+  function applySearch(rawQuery) {
+    var trimmedQuery = rawQuery.trim();
+    var query = trimmedQuery.toLowerCase();
+    if (!query) {
+      clearSearchState();
+      writeHashSearchQuery('');
+      return;
+    }
+
+    var pathOnly = query.indexOf('.') === 0;
+    if (pathOnly) {
+      query = query.slice(1);
+    }
+    if (pathOnly && !query) {
+      clearSearchState();
+      writeHashSearchQuery('');
+      return;
+    }
+
+    markPathSearchLearned(rawQuery);
+
+    completionCandidates = completionCandidatesForPaths(rawQuery.trim(), currentSuggestions());
+    completionIndex = -1;
+
+    var directMatches = {};
+    var visiblePaths = {};
+    var openPaths = {};
+    rows.forEach(function(row){
+      var path = (row.dataset.path || '').toLowerCase();
+      var name = (row.dataset.name || '').toLowerCase();
+      var text = (row.dataset.text || '').toLowerCase();
+      var pathMatch = query.indexOf('.') !== -1
+        ? matchesPathQuery(path, trimmedQuery)
+        : path.indexOf(query) !== -1;
+      var matched = pathOnly
+        ? matchesPathQuery(path, trimmedQuery)
+        : pathMatch || name.indexOf(query) !== -1 || text.indexOf(query) !== -1;
+      if (!matched) {
+        return;
+      }
+      directMatches[row.dataset.path] = true;
+      addAncestorPaths(row.dataset.path, visiblePaths, openPaths);
+    });
+
+    var selectedRow = rows.find(function(row){ return !!directMatches[row.dataset.path]; });
+    if (selectedRow && selectedRow.tagName === 'DETAILS') {
+      openPaths[selectedRow.dataset.path] = true;
+    }
+
+    var matchCount = Object.keys(directMatches).length;
+    rows.forEach(function(row){
+      var path = row.dataset.path;
+      var visible = !!visiblePaths[path];
+      var open = !!openPaths[path];
+      row.style.display = visible ? '' : 'none';
+      row.classList.toggle('search-match', !!directMatches[path]);
+      row.classList.toggle('search-ancestor', visible && !directMatches[path]);
+      if (row.tagName === 'DETAILS') {
+        if (open) {
+          row.setAttribute('open', '');
+        } else {
+          row.removeAttribute('open');
+        }
+      }
+    });
+
+    noResults.style.display = matchCount ? 'none' : 'block';
+    noResults.textContent = noResults.dataset.noResultsMessage || 'No matches';
+    setSearchStatus(matchCount ? matchCount + ' matches' : 'No matches', matchCount > 0);
+    updateGhostSuggestion(rawQuery.trim());
+    writeHashSearchQuery(rawQuery.trim());
+  }
+
+  document.getElementById('expand-all').addEventListener('click', function(){
+    if (input.value) {
+      visibleRows().forEach(function(row){
+        if (row.tagName === 'DETAILS') row.setAttribute('open', '');
+      });
+      return;
+    }
+    props.forEach(function(p){ p.setAttribute('open',''); });
+  });
+  document.getElementById('collapse-all').addEventListener('click', function(){
+    if (input.value) {
+      applySearch(input.value);
+      return;
+    }
+    props.forEach(function(p){ p.removeAttribute('open'); });
+  });
+  input.addEventListener('input', function(){
+    applySearch(this.value);
+  });
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'ArrowDown' && document.activeElement === input) {
+      if (completionCandidates.length) {
+        e.preventDefault();
+        completionIndex = completionIndex < 0 ? 0 : (completionIndex + 1) % completionCandidates.length;
+        updateGhostSuggestion(input.value);
+      }
+      return;
+    }
+    if (e.key === 'ArrowUp' && document.activeElement === input) {
+      if (completionCandidates.length) {
+        e.preventDefault();
+        completionIndex = completionIndex < 0 ? completionCandidates.length - 1 : (completionIndex - 1 + completionCandidates.length) % completionCandidates.length;
+        updateGhostSuggestion(input.value);
+      }
+      return;
+    }
+    if ((e.key === 'Tab' || e.key === 'ArrowRight') && document.activeElement === input) {
+      var caretAtEnd = input.selectionStart === input.value.length && input.selectionEnd === input.value.length;
+      if (!caretAtEnd) {
+        return;
+      }
+      var completion = selectedCompletion() || bestCompletionForQuery(input.value);
+      if (completion) {
+        e.preventDefault();
+        input.value = completion;
+        applySearch(completion);
+      }
+      return;
+    }
+    if (e.key === '.' && document.activeElement === input && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      var pathLikeQuery = isPathLikeQuery(input.value, currentSuggestions());
+      if (pathLikeQuery) {
+        if (input.selectionStart === input.value.length && input.selectionEnd === input.value.length) {
+          e.preventDefault();
+          var dotAdvance = dotAdvanceForPathSearch(input.value, currentSuggestions());
+          if (dotAdvance) {
+            input.value = dotAdvance;
+            applySearch(dotAdvance);
+          }
+        }
+        return;
+      }
+    }
+    if (e.key === '/' && !e.ctrlKey && !e.metaKey && document.activeElement !== input) {
+      e.preventDefault();
+      input.focus();
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (input.value) {
+        var trimmed = trimPathSearch(input.value);
+        if (trimmed !== input.value) {
+          input.value = trimmed;
+          applySearch(trimmed);
+        } else {
+          input.value = '';
+          applySearch('');
+          input.blur();
+        }
+        return;
+      }
+      var hadOpen = false;
+      visibleRows().forEach(function(row){
+        if (row.tagName === 'DETAILS' && row.hasAttribute('open')) {
+          hadOpen = true;
+          row.removeAttribute('open');
+        }
+      });
+      if (hadOpen) {
+        return;
+      }
+      if (document.activeElement && document.activeElement !== document.body) {
+        document.activeElement.blur();
+        return;
+      }
+      location.href = document.body.dataset.basePath + '/';
+    }
+  });
+  (function(){
+    clearSearchState();
+    var query = readHashSearchQuery();
+    if (!query) return;
+    input.value = query;
+    applySearch(query);
+  })();
 })();
 ` + theme.ThemeToggleJS + `
 </script>

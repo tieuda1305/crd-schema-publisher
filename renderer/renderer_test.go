@@ -264,6 +264,24 @@ func TestRenderSchema_BasicOutput(t *testing.T) {
 		{"apiVersion: example.io/v1", "YAML boilerplate"},
 		{"kind: Myresource", "YAML boilerplate kind"},
 		{"← Back to index", "back link"},
+		{"id=\"search\"", "schema search input"},
+		{"Search schema fields...  ( / to focus, Esc to clear )", "search placeholder"},
+		{"id=\"search-status\"", "search status element"},
+		{"Tip: use .spec.replicas for path-only search", "schema-derived empty search hint"},
+		{"<div class=\"search-status\" id=\"search-status\" data-empty-message=\"Tip: use .spec.replicas for path-only search\" aria-live=\"polite\">Tip: use .spec.replicas for path-only search</div>", "empty search hint rendered on first paint"},
+		{"class=\"search-row\"", "full-width search row"},
+		{"class=\"search-input-wrap\"", "inline search wrapper"},
+		{"id=\"search-ghost\"", "inline ghost suggestion element"},
+		{"appearance: none;", "search input native appearance reset"},
+		{"font-size: 0.95rem; line-height: 1.2;", "shared search text metrics on wrapper"},
+		{"font-family: inherit; font-weight: inherit; letter-spacing: inherit;", "shared search font metrics inherit exactly"},
+		{"text-transform: inherit; text-indent: inherit; font-kerning: inherit;", "shared search text shaping inherits exactly"},
+		{"line-height: inherit;", "ghost text inherits line height"},
+		{"display: flex; align-items: center;", "ghost overlay vertical centering"},
+		{"justify-content: space-between;", "restored toolbar split layout"},
+		{"<div class=\"toolbar-left\">", "left toolbar group"},
+		{"id=\"no-results\"", "no results element"},
+		{"No matches. Try .spec.replicas for an exact path", "schema-derived no-results hint"},
 		{"Expand all", "expand all button"},
 		{"Collapse all", "collapse all button"},
 		{"View raw schema", "raw schema link"},
@@ -276,11 +294,57 @@ func TestRenderSchema_BasicOutput(t *testing.T) {
 		{"required", "required badge"},
 		{"integer", "type badge"},
 		{"object", "type badge for object"},
+		{"data-path=\"spec\"", "root property path metadata"},
+		{"data-path=\"spec.replicas\"", "nested property path metadata"},
+		{"data-path-key=\"|spec|replicas|\"", "normalized path key metadata"},
+		{"data-name=\"replicas\"", "field name metadata"},
+		{"data-text=\"Number of replicas minimum: 1 maximum: 10\"", "search text metadata"},
 		{"minimum: 1", "constraint display"},
 		{"maximum: 10", "constraint display"},
 		{"pattern: ^[a-z]+$", "constraint display"},
+		{"#q=", "URL hash search state"},
+		{"query.indexOf('.') === 0", "leading-dot path-only detection"},
+		{"if (pathOnly && !query) {", "dot-only path query guard"},
+		{"var schemaSearch = window.SchemaSearch;", "shared schema search module is wired into the page"},
+		{"if (!schemaSearch) {", "missing schema search asset is guarded"},
+		{"input.disabled = true;", "search input is disabled when shared asset is unavailable"},
+		{"setSearchStatus('Search unavailable', false);", "missing schema search asset reports degraded search state"},
+		{"if (e.key !== 'Escape') {", "degraded mode still wires escape navigation"},
+		{"location.href = document.body.dataset.basePath + '/';", "degraded mode escape still navigates back to index"},
+		{"var matchesPathQuery = schemaSearch.matchesPathQuery;", "path matching comes from shared schema search module"},
+		{"var dotAdvanceForPathSearch = schemaSearch.dotAdvanceForPathSearch;", "dot advance comes from shared schema search module"},
+		{"var trimPathSearch = schemaSearch.trimPathSearch;", "path trimming comes from shared schema search module"},
+		{"var openPaths = {};", "separate open path tracking for filtered results"},
+		{"if (open) {", "only ancestor branches auto-open during search"},
+		{"var selectedRow = rows.find(function(row){ return !!directMatches[row.dataset.path]; });", "first direct match becomes selected result"},
+		{"if (selectedRow && selectedRow.tagName === 'DETAILS') {", "selected expandable match auto-expands to reveal description"},
+		{"openPaths[selectedRow.dataset.path] = true;", "selected expandable match is opened explicitly"},
+		{"bestCompletionForQuery(query)", "autocomplete suggestion lookup"},
+		{"return bestCompletionForPaths(query, currentSuggestions());", "default autocomplete uses shared path suggestions"},
+		{"ghostSuffixForCompletion(input.value, completion)", "inline ghost suffix calculation"},
+		{"if (e.key === '.' && document.activeElement === input", "dot key interception in search input"},
+		{"var dotAdvance = dotAdvanceForPathSearch(input.value, currentSuggestions());", "dot key uses shared path advance"},
+		{"var pathLikeQuery = isPathLikeQuery(input.value, currentSuggestions());", "dot interception is limited to actual path-like queries"},
+		{"var learnedPathSearchStorageKey = 'crd-schema-publisher:path-search-learned';", "path search learning is persisted in local storage"},
+		{"function hasLearnedPathSearch()", "path search learned-state helper exists"},
+		{"function markPathSearchLearned(rawQuery)", "path search learned-state writer exists"},
+		{"if (query.indexOf('.') !== 0) {", "learned-state only triggers for leading-dot queries"},
+		{"if (queryState.segments.length < 2) {", "learned-state requires at least two path segments"},
+		{"localStorage.setItem(learnedPathSearchStorageKey, '1');", "learned path search is persisted per browser"},
+		{"setSearchStatus(hasLearnedPathSearch() ? '' : (searchStatus.dataset.emptyMessage || ''), false);", "empty hint is suppressed after learning"},
+		{"if (pathLikeQuery) {", "invalid dot positions are only blocked in path mode"},
+		{"if (input.selectionStart === input.value.length && input.selectionEnd === input.value.length) {", "dot interception only applies at the end of the query"},
+		{"clearSearchState();", "initial empty state is applied on page load"},
+		{"trimPathSearch(input.value)", "path-aware escape trimming"},
+		{"if ((e.key === 'Tab' || e.key === 'ArrowRight') && document.activeElement === input)", "tab and right arrow share autocomplete acceptance"},
+		{"var caretAtEnd = input.selectionStart === input.value.length && input.selectionEnd === input.value.length;", "autocomplete acceptance computes caret-at-end once"},
+		{"if (!caretAtEnd) {", "tab and right arrow only accept completion at end of input"},
+		{"e.key === 'ArrowDown' && document.activeElement === input", "arrow down completion browsing"},
+		{"e.key === 'ArrowUp' && document.activeElement === input", "arrow up completion browsing"},
+		{"e.key === '/'", "slash keyboard shortcut"},
 		{"toggleTheme", "theme toggle function"},
 		{"favicon.svg", "favicon link"},
+		{"<script src=\"/schema-search.js\"></script>", "shared schema search script"},
 		{"--accent", "CSS custom properties"},
 		{"body::before", "starfield CSS"},
 	}
@@ -363,6 +427,65 @@ func TestRenderSchema_ArrayTypes(t *testing.T) {
 	}
 	if !strings.Contains(html, "[]object") {
 		t.Error("should show []object for object array")
+	}
+	if !strings.Contains(html, `data-path="servers[].host"`) {
+		t.Error("array child path should use [] notation")
+	}
+	if !strings.Contains(html, `data-path-key="|servers[]|host|"`) {
+		t.Error("array child path key should preserve [] segment notation")
+	}
+	if !strings.Contains(html, `data-parent-path="servers"`) {
+		t.Error("array child should point to the rendered array row as its parent path")
+	}
+}
+
+func TestBuildPathSearchKey(t *testing.T) {
+	tests := []struct {
+		path string
+		want string
+	}{
+		{"spec", "|spec|"},
+		{"spec.replicas", "|spec|replicas|"},
+		{"servers[].host", "|servers[]|host|"},
+		{"operation.sync.source.helm.apiVersions", "|operation|sync|source|helm|apiVersions|"},
+	}
+
+	for _, tt := range tests {
+		if got := buildPathSearchKey(tt.path); got != tt.want {
+			t.Errorf("buildPathSearchKey(%q) = %q, want %q", tt.path, got, tt.want)
+		}
+	}
+}
+
+func TestSearchPathExampleForProperties(t *testing.T) {
+	props := []RenderProperty{
+		{
+			Name: "apiVersion",
+			Path: "apiVersion",
+			Node: &SchemaNode{Type: "string"},
+		},
+		{
+			Name: "metadata",
+			Path: "metadata",
+			Node: &SchemaNode{Type: "object"},
+			Children: []RenderProperty{
+				{Name: "name", Path: "metadata.name", Node: &SchemaNode{Type: "string"}},
+			},
+		},
+		{
+			Name: "spec",
+			Path: "spec",
+			Node: &SchemaNode{Type: "object"},
+			Children: []RenderProperty{
+				{Name: "name", Path: "spec.name", Node: &SchemaNode{Type: "string"}},
+				{Name: "replicas", Path: "spec.replicas", Node: &SchemaNode{Type: "integer"}},
+				{Name: "template", Path: "spec.template", Node: &SchemaNode{Type: "object"}},
+			},
+		},
+	}
+
+	if got := searchPathExampleForProperties(props); got != ".spec.replicas" {
+		t.Fatalf("searchPathExampleForProperties(...) = %q, want %q", got, ".spec.replicas")
 	}
 }
 
@@ -579,6 +702,24 @@ func TestRenderAll_SkipsMetadataDir(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(metaDir, "kinds.html")); !os.IsNotExist(err) {
 		t.Fatalf("expected metadata dir to be skipped, got err=%v", err)
+	}
+}
+
+func TestRenderAll_WritesSchemaSearchScript(t *testing.T) {
+	tmpDir := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(tmpDir, "example.io"), 0o755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "example.io", "thing_v1.json"), []byte(`{"type":"object"}`), 0o644)
+
+	if err := RenderAll(tmpDir, ""); err != nil {
+		t.Fatalf("RenderAll error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(tmpDir, "schema-search.js"))
+	if err != nil {
+		t.Fatalf("schema-search.js not created: %v", err)
+	}
+	if !strings.Contains(string(data), "SchemaSearch") {
+		t.Fatal("schema-search.js should contain the shared schema search module")
 	}
 }
 
