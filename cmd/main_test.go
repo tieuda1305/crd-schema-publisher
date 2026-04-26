@@ -1,6 +1,9 @@
 package main
 
 import (
+	"errors"
+	"flag"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -77,6 +80,34 @@ func TestPrintUsage_ContainsAllCommands(t *testing.T) {
 	}
 }
 
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	defer func() {
+		os.Stderr = old
+	}()
+
+	fn()
+
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
 func TestRegisteredCommandsMatchAdvertisedCommands(t *testing.T) {
 	advertised := make(map[string]bool)
 	for _, cmd := range commandSpecs {
@@ -133,6 +164,16 @@ func TestParseSubcommand_LeadingFlagDefaultsToRun(t *testing.T) {
 	}
 	if len(args) != 2 || args[0] != "--output-dir" || args[1] != "/tmp/out" {
 		t.Errorf("expected ['--output-dir', '/tmp/out'], got %v", args)
+	}
+}
+
+func TestParseSubcommand_LeadingOutputDirShortDefaultsToRun(t *testing.T) {
+	cmd, args := parseSubcommand([]string{"crd-schema-publisher", "-o", "/tmp/out"})
+	if cmd != "run" {
+		t.Errorf("expected default 'run' for -o, got %q", cmd)
+	}
+	if len(args) != 2 || args[0] != "-o" || args[1] != "/tmp/out" {
+		t.Errorf("expected ['-o', '/tmp/out'], got %v", args)
 	}
 }
 
@@ -216,6 +257,19 @@ func TestVersionDefault(t *testing.T) {
 	}
 }
 
+func TestParseOutputDirArg_ShortOutputDirMarksExplicit(t *testing.T) {
+	outputDir, explicit, err := parseOutputDirArg("preview", []string{"-o", "/tmp/out"}, "/fallback")
+	if err != nil {
+		t.Fatalf("parseOutputDirArg error: %v", err)
+	}
+	if outputDir != "/tmp/out" {
+		t.Fatalf("expected short output dir /tmp/out, got %q", outputDir)
+	}
+	if !explicit {
+		t.Fatal("expected -o to mark output dir explicit")
+	}
+}
+
 func TestRunExtract_FlagsOverrideEnvVars(t *testing.T) {
 	clientOrig := buildClientFunc
 	buildOrig := buildSiteFunc
@@ -248,6 +302,35 @@ func TestRunExtract_FlagsOverrideEnvVars(t *testing.T) {
 	}
 	if capturedOpts.OutputDir != tmpDir {
 		t.Errorf("expected flag output-dir %q, got %q", tmpDir, capturedOpts.OutputDir)
+	}
+}
+
+func TestRunExtract_OutputDirShortFlagOverridesEnvVar(t *testing.T) {
+	clientOrig := buildClientFunc
+	buildOrig := buildSiteFunc
+	defer func() {
+		buildClientFunc = clientOrig
+		buildSiteFunc = buildOrig
+	}()
+
+	var capturedOpts extractor.SiteBuildOptions
+	buildClientFunc = func(string) (*apiextensionsclient.Clientset, error) {
+		return apiextensionsclient.NewForConfig(&rest.Config{Host: "https://example.invalid"})
+	}
+	buildSiteFunc = func(opts extractor.SiteBuildOptions) (extractor.SiteBuildResult, error) {
+		capturedOpts = opts
+		return extractor.SiteBuildResult{Status: extractor.BuildResultNoop}, nil
+	}
+
+	t.Setenv("OUTPUT_DIR", "/env-output")
+
+	tmpDir := t.TempDir()
+	err := runExtract([]string{"-o", tmpDir})
+	if err != nil {
+		t.Fatalf("runExtract error: %v", err)
+	}
+	if capturedOpts.OutputDir != tmpDir {
+		t.Errorf("expected short output-dir %q, got %q", tmpDir, capturedOpts.OutputDir)
 	}
 }
 
@@ -555,7 +638,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	err := runConvert([]string{"--file", singleFile, "--dir", inputDir, "--output-dir", outputDir})
+	err := runConvert([]string{"-f", singleFile, "-d", inputDir, "-o", outputDir})
 	if err != nil {
 		t.Fatalf("runConvert error: %v", err)
 	}
@@ -565,6 +648,34 @@ spec:
 	}
 	if _, err := os.Stat(filepath.Join(outputDir, "cert-manager.io", "issuer_v1.json")); err != nil {
 		t.Fatal("expected Issuer schema from --dir")
+	}
+}
+
+func TestRunConvert_HelpCombinesAliasFlags(t *testing.T) {
+	output := captureStderr(t, func() {
+		err := runConvert([]string{"--help"})
+		if !errors.Is(err, flag.ErrHelp) {
+			t.Fatalf("expected flag.ErrHelp, got %v", err)
+		}
+	})
+
+	for _, expected := range []string{
+		"-f, --file",
+		"-d, --dir",
+		"-o, --output-dir",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("expected help output to contain %q:\n%s", expected, output)
+		}
+	}
+	if count := strings.Count(output, "CRD YAML file(s), comma-separated"); count != 1 {
+		t.Fatalf("expected file help text once, got %d:\n%s", count, output)
+	}
+	if count := strings.Count(output, "directory containing CRD YAML files"); count != 1 {
+		t.Fatalf("expected dir help text once, got %d:\n%s", count, output)
+	}
+	if count := strings.Count(output, "output directory for JSON schemas"); count != 1 {
+		t.Fatalf("expected output-dir help text once, got %d:\n%s", count, output)
 	}
 }
 
